@@ -62,6 +62,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newLsCmd(opts),
 		newDumpCmd(opts),
 		newConnectCmd(opts),
+		newSSHConfigCmd(opts),
 		newUserCmd(opts),
 		newLogoutCmd(opts),
 		newVersionCmd(version, commit, date),

@@ -18,6 +18,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - `onessh logout` clear cached master password
 - `onessh version` print version/build info
 - `onessh dump` print decrypted YAML to stdout
+- `onessh sshconfig export|import` sync with `~/.ssh/config`
 - `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias> [-- <ssh-args...>]` connect via SSH (supports SSH argument passthrough)
 - Hosts reference user profiles via `user_ref`
 - Auth is maintained at profile level
@@ -149,6 +150,18 @@ Hook behavior notes:
 
 - `pre_connect` runs first, then an interactive shell starts, then `post_connect` runs after the shell exits.
 - To jump directly into root shell, use `--pre-connect "exec sudo su -"`.
+
+SSH config interop:
+
+```bash
+onessh sshconfig export
+onessh sshconfig export --stdout
+onessh sshconfig import
+onessh sshconfig import --overwrite
+```
+
+- `export` writes a managed block into `~/.ssh/config`.
+- `import` reads compatible `Host` entries (wildcards are ignored).
 
 ## Security Notes
 

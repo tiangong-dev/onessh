@@ -18,6 +18,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - `onessh logout` 清除主密码缓存
 - `onessh version` 查看版本/构建信息
 - `onessh dump` 输出解密后的 YAML 到标准输出
+- `onessh sshconfig export|import` 与 `~/.ssh/config` 互通
 - `onessh <alias> [-- <ssh-args...>]` 或 `onessh connect <alias> [-- <ssh-args...>]` 通过 SSH 连接（支持 SSH 参数透传）
 - Host 通过 `user_ref` 关联独立 user profile
 - 认证信息在 user profile 层维护
@@ -149,6 +150,18 @@ Hook 行为说明：
 
 - `pre_connect` 先执行，再进入交互式 shell，shell 退出后再执行 `post_connect`。
 - 如果你想直接切换到 root shell，可使用 `--pre-connect "exec sudo su -"`.
+
+SSH 配置互通：
+
+```bash
+onessh sshconfig export
+onessh sshconfig export --stdout
+onessh sshconfig import
+onessh sshconfig import --overwrite
+```
+
+- `export` 会把 onessh 管理块写入 `~/.ssh/config`。
+- `import` 会读取可兼容的 `Host` 条目（会忽略通配符条目）。
 
 ## 安全说明
 
