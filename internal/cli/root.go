@@ -52,6 +52,7 @@ func NewRootCmd() *cobra.Command {
 		newListCmd(opts),
 		newDumpCmd(opts),
 		newConnectCmd(opts),
+		newUserCmd(opts),
 	)
 
 	return rootCmd
@@ -299,6 +300,160 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConnect(cmd, opts, args[0])
+		},
+	}
+	return cmd
+}
+
+func newUserCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "user",
+		Short: "Manage reusable user profiles",
+		Args:  cobra.NoArgs,
+	}
+
+	cmd.AddCommand(
+		newUserListCmd(opts),
+		newUserAddCmd(opts),
+		newUserRmCmd(opts),
+	)
+	return cmd
+}
+
+func newUserListCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List user profiles",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			aliases := sortedUserAliases(cfg.Users)
+			if len(aliases) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "(no user profiles)")
+				return nil
+			}
+
+			usage := map[string]int{}
+			for _, hostCfg := range cfg.Hosts {
+				if hostCfg.UserRef != "" {
+					usage[hostCfg.UserRef]++
+				}
+			}
+
+			for _, alias := range aliases {
+				inUse := usage[alias]
+				if inUse > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tused_by=%d\n", alias, cfg.Users[alias].Name, inUse)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", alias, cfg.Users[alias].Name)
+				}
+			}
+
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newUserAddCmd(opts *rootOptions) *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "add <user-alias>",
+		Short: "Add a user profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := normalizeUserAlias(args[0])
+			if alias == "" {
+				return errors.New("user alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			if _, exists := cfg.Users[alias]; exists {
+				return fmt.Errorf("user profile %q already exists", alias)
+			}
+
+			userName := strings.TrimSpace(name)
+			if userName == "" {
+				reader := bufio.NewReader(os.Stdin)
+				userName, err = promptNonEmpty(reader, "User", currentUserName())
+				if err != nil {
+					return err
+				}
+			}
+
+			cfg.Users[alias] = store.UserConfig{Name: strings.TrimSpace(userName)}
+			if err := repo.Save(cfg, pass); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s added (%s)\n", alias, cfg.Users[alias].Name)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Username value for this profile")
+	return cmd
+}
+
+func newUserRmCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rm <user-alias>",
+		Short: "Remove a user profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := normalizeUserAlias(args[0])
+			if alias == "" {
+				return errors.New("user alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			if _, exists := cfg.Users[alias]; !exists {
+				return fmt.Errorf("user profile %q does not exist", alias)
+			}
+
+			inUseBy := hostAliasesUsingUser(cfg, alias)
+			if len(inUseBy) > 0 {
+				return fmt.Errorf("user profile %q is used by hosts: %s", alias, strings.Join(inUseBy, ", "))
+			}
+
+			delete(cfg.Users, alias)
+			if err := repo.Save(cfg, pass); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s removed\n", alias)
+			return nil
 		},
 	}
 	return cmd
@@ -690,6 +845,17 @@ func findUserAliasByName(users map[string]store.UserConfig, name string) string 
 		}
 	}
 	return ""
+}
+
+func hostAliasesUsingUser(cfg store.PlainConfig, userAlias string) []string {
+	var hostAliases []string
+	for hostAlias, hostCfg := range cfg.Hosts {
+		if hostCfg.UserRef == userAlias {
+			hostAliases = append(hostAliases, hostAlias)
+		}
+	}
+	sort.Strings(hostAliases)
+	return hostAliases
 }
 
 func normalizeUserAlias(input string) string {
