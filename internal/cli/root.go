@@ -27,9 +27,10 @@ import (
 var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type rootOptions struct {
-	configPath string
-	cacheTTL   time.Duration
-	noCache    bool
+	configPath  string
+	cacheTTL    time.Duration
+	noCache     bool
+	agentSocket string
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -53,6 +54,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to config store directory")
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
+	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
 
 	rootCmd.AddCommand(
 		newInitCmd(opts),
@@ -63,6 +65,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newDumpCmd(opts),
 		newConnectCmd(opts),
 		newSSHConfigCmd(opts),
+		newAgentCmd(opts),
 		newUserCmd(opts),
 		newLogoutCmd(opts),
 		newVersionCmd(version, commit, date),
@@ -112,7 +115,11 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 			} else if err := repo.Save(cfg, pass1); err != nil {
 				return err
 			}
-			if cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache); err == nil {
+			cache, err := opts.passphraseStore(repo.Path)
+			if err != nil {
+				return err
+			}
+			if cache.IsEnabled() {
 				_ = cache.Set(pass1)
 			}
 
@@ -127,9 +134,9 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 
 func newAddCmd(opts *rootOptions) *cobra.Command {
 	var (
-		envFlags      []string
-		preConnect    []string
-		postConnect   []string
+		envFlags    []string
+		preConnect  []string
+		postConnect []string
 	)
 
 	cmd := &cobra.Command{
@@ -773,7 +780,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache)
+			cache, err := opts.passphraseStore(repo.Path)
 			if err != nil {
 				return err
 			}
@@ -1296,16 +1303,17 @@ func authConfigFromFlagValues(
 }
 
 func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
-	cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache)
-	if err == nil {
-		if cachedPassphrase, ok, _ := cache.Get(); ok {
-			cfg, loadErr := repo.Load(cachedPassphrase)
-			if loadErr == nil {
-				return cfg, cachedPassphrase, nil
-			}
-			wipe(cachedPassphrase)
-			_ = cache.Clear()
+	cache, err := opts.passphraseStore(repo.Path)
+	if err != nil {
+		return store.PlainConfig{}, nil, err
+	}
+	if cachedPassphrase, ok, _ := cache.Get(); ok {
+		cfg, loadErr := repo.Load(cachedPassphrase)
+		if loadErr == nil {
+			return cfg, cachedPassphrase, nil
 		}
+		wipe(cachedPassphrase)
+		_ = cache.Clear()
 	}
 
 	passphrase, err := promptRequiredPassword("Enter master password: ")

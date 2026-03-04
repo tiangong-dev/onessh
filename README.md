@@ -16,6 +16,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - `onessh user update <alias>` update reusable user auth/profile
 - `onessh user rm <alias>` remove a reusable user
 - `onessh logout` clear cached master password
+- `onessh agent start|stop|status` manage in-memory cache agent
 - `onessh version` print version/build info
 - `onessh dump` print decrypted YAML to stdout
 - `onessh sshconfig export|import` sync with `~/.ssh/config`
@@ -62,7 +63,14 @@ Override options:
 - CLI flag: `--config /path/to/config`
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
-- Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
+- CLI flag: `--agent-socket /path/to/agent.sock` (for memory backend)
+- Environment variable: `ONESSH_AGENT_SOCKET` to customize memory agent socket path
+
+Memory backend behavior:
+
+- Master password cache is memory-agent only (no file cache compatibility).
+- Agent auto-starts on first successful password entry.
+- You can manage it manually via `onessh agent start|status|stop`.
 
 Store layout (sharded + SOPS-like encrypted values):
 

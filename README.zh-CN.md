@@ -16,6 +16,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - `onessh user update <alias>` 更新可复用 user 的认证/配置
 - `onessh user rm <alias>` 删除可复用 user
 - `onessh logout` 清除主密码缓存
+- `onessh agent start|stop|status` 管理内存缓存 agent
 - `onessh version` 查看版本/构建信息
 - `onessh dump` 输出解密后的 YAML 到标准输出
 - `onessh sshconfig export|import` 与 `~/.ssh/config` 互通
@@ -62,7 +63,14 @@ brew upgrade onessh
 - 命令参数：`--config /path/to/config`
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 可禁用缓存
-- 环境变量：`ONESSH_CACHE_FILE` 可指定缓存文件路径
+- 命令参数：`--agent-socket /path/to/agent.sock`（memory 后端使用）
+- 环境变量：`ONESSH_AGENT_SOCKET` 可指定内存 agent 的 socket 路径
+
+memory 后端行为：
+
+- 主密码缓存仅支持内存 agent（不再兼容文件缓存）。
+- 第一次成功输入主密码后会自动拉起 agent。
+- 也可以手动管理：`onessh agent start|status|stop`。
 
 存储结构（分片 + SOPS 风格值加密）：
 
