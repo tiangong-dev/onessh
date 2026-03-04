@@ -15,6 +15,7 @@ import (
 
 	"onessh/internal/store"
 
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
@@ -548,19 +549,56 @@ func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
 }
 
 func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
+	defaultType = normalizeAuthType(defaultType)
+	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		return promptAuthTypeSelect(defaultType)
+	}
+
 	for {
 		raw, err := promptOptional(reader, "Auth type (key/password or 1/2)", defaultType)
 		if err != nil {
 			return "", err
 		}
-		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "1", "k", "key":
-			return "key", nil
-		case "2", "p", "pass", "password":
-			return "password", nil
-		default:
-			fmt.Fprintln(os.Stderr, "Auth type must be key/password or 1/2.")
+		authType := normalizeAuthType(raw)
+		if authType != "" {
+			return authType, nil
 		}
+		fmt.Fprintln(os.Stderr, "Auth type must be key/password or 1/2.")
+	}
+}
+
+func promptAuthTypeSelect(defaultType string) (string, error) {
+	items := []string{"key", "password"}
+	cursorPos := 0
+	if defaultType == "password" {
+		cursorPos = 1
+	}
+
+	prompt := promptui.Select{
+		Label:             "Auth type (use ↑/↓ and Enter)",
+		Items:             items,
+		CursorPos:         cursorPos,
+		Size:              len(items),
+		HideHelp:          true,
+		StartInSearchMode: false,
+	}
+
+	_, result, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return normalizeAuthType(result), nil
+}
+
+func normalizeAuthType(input string) string {
+	switch strings.ToLower(strings.TrimSpace(input)) {
+	case "1", "k", "key":
+		return "key"
+	case "2", "p", "pass", "password":
+		return "password"
+	default:
+		return ""
 	}
 }
 
