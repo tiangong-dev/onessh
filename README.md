@@ -8,7 +8,7 @@ OneSSH is a Go-based SSH host manager that encrypts the entire configuration wit
 
 - `onessh init` initialize encrypted config
 - `onessh add <alias>` add a host
-- `onessh update <alias>` update a host (can rename alias via prompt or `--to`)
+- `onessh update <alias>` update a host (interactive or with generic flags)
 - `onessh rm <alias>` remove a host
 - `onessh ls` list host aliases
 - `onessh user ls` list reusable users
@@ -87,6 +87,15 @@ users:
 
 Compatibility note: legacy `hosts.<alias>.auth` is still read as fallback for older configs.
 
+Non-interactive host update examples:
+
+```bash
+onessh update ais --alias pi
+onessh update ais --host 10.0.0.12 --port 2222
+onessh update ais --user-ref ops
+onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
+```
+
 ## Security Notes
 
 - Encryption: Argon2id + AES-256-GCM
@@ -122,7 +131,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 
 - `onessh init` 初始化加密配置
 - `onessh add <alias>` 添加主机
-- `onessh update <alias>` 更新主机（可在交互中改别名，或使用 `--to`）
+- `onessh update <alias>` 更新主机（可交互修改，也可通过通用参数修改）
 - `onessh rm <alias>` 删除主机
 - `onessh ls` 列出主机别名
 - `onessh user ls` 列出可复用 user
@@ -200,6 +209,15 @@ users:
 ```
 
 兼容说明：旧配置中的 `hosts.<alias>.auth` 仍会作为回退逻辑被读取。
+
+非交互更新示例：
+
+```bash
+onessh update ais --alias pi
+onessh update ais --host 10.0.0.12 --port 2222
+onessh update ais --user-ref ops
+onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
+```
 
 ### 安全说明
 

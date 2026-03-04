@@ -159,7 +159,17 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newUpdateCmd(opts *rootOptions) *cobra.Command {
-	var toAlias string
+	var (
+		aliasFlag    string
+		hostFlag     string
+		portFlag     int
+		proxyJump    string
+		userRefFlag  string
+		userFlag     string
+		authTypeFlag string
+		keyPathFlag  string
+		passwordFlag string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "update <host-alias>",
@@ -187,9 +197,49 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("host %q does not exist", alias)
 			}
 
-			targetAlias := strings.TrimSpace(toAlias)
-			if targetAlias == "" {
-				targetAlias = alias
+			targetAlias := alias
+			updatedHost := existing
+
+			if hasAnyHostUpdateFlags(cmd) {
+				if cmd.Flags().Changed("alias") {
+					targetAlias = strings.TrimSpace(aliasFlag)
+					if targetAlias == "" {
+						return errors.New("--alias cannot be empty")
+					}
+				}
+				if cmd.Flags().Changed("host") {
+					updatedHost.Host = strings.TrimSpace(hostFlag)
+					if updatedHost.Host == "" {
+						return errors.New("--host cannot be empty")
+					}
+				}
+				if cmd.Flags().Changed("port") {
+					if portFlag <= 0 || portFlag > 65535 {
+						return errors.New("--port must be between 1 and 65535")
+					}
+					updatedHost.Port = portFlag
+				}
+				if cmd.Flags().Changed("proxy-jump") {
+					updatedHost.ProxyJump = strings.TrimSpace(proxyJump)
+				}
+
+				if err := applyUserProfileUpdateFlags(
+					cmd,
+					&cfg,
+					&updatedHost,
+					userRefFlag,
+					userFlag,
+					authTypeFlag,
+					keyPathFlag,
+					passwordFlag,
+				); err != nil {
+					return err
+				}
+
+				if _, _, err := resolveHostIdentity(cfg, updatedHost); err != nil {
+					return err
+				}
+			} else {
 				if term.IsTerminal(int(os.Stdin.Fd())) {
 					reader := bufio.NewReader(os.Stdin)
 					targetAlias, err = promptNonEmpty(reader, "Host alias", alias)
@@ -197,20 +247,21 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 						return err
 					}
 				}
+				targetAlias = strings.TrimSpace(targetAlias)
+				if targetAlias == "" {
+					return errors.New("target host alias cannot be empty")
+				}
+
+				updatedHost, err = promptHostConfig(&cfg, &existing)
+				if err != nil {
+					return err
+				}
 			}
-			targetAlias = strings.TrimSpace(targetAlias)
-			if targetAlias == "" {
-				return errors.New("target host alias cannot be empty")
-			}
+
 			if targetAlias != alias {
 				if _, conflict := cfg.Hosts[targetAlias]; conflict {
 					return fmt.Errorf("host %q already exists", targetAlias)
 				}
-			}
-
-			updatedHost, err := promptHostConfig(&cfg, &existing)
-			if err != nil {
-				return err
 			}
 			if targetAlias != alias {
 				delete(cfg.Hosts, alias)
@@ -229,7 +280,15 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&toAlias, "to", "", "Rename host alias to this value")
+	cmd.Flags().StringVar(&aliasFlag, "alias", "", "Update host alias")
+	cmd.Flags().StringVar(&hostFlag, "host", "", "Update host address or domain")
+	cmd.Flags().IntVar(&portFlag, "port", 0, "Update SSH port")
+	cmd.Flags().StringVar(&proxyJump, "proxy-jump", "", "Update ProxyJump (empty value clears it)")
+	cmd.Flags().StringVar(&userRefFlag, "user-ref", "", "Bind host to an existing user profile alias")
+	cmd.Flags().StringVar(&userFlag, "user", "", "Update linked user profile name")
+	cmd.Flags().StringVar(&authTypeFlag, "auth-type", "", "Update linked user auth type (key|password)")
+	cmd.Flags().StringVar(&keyPathFlag, "key-path", "", "Update linked user key path")
+	cmd.Flags().StringVar(&passwordFlag, "password", "", "Update linked user password")
 	return cmd
 }
 
@@ -722,7 +781,8 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, e
 			args = append([]string{"-e", "ssh"}, args...)
 			env = append(env, "SSHPASS="+auth.Password)
 		} else {
-			fmt.Fprintln(errOut, "sshpass not found, ssh will prompt password interactively.")
+			fmt.Fprintln(errOut, "sshpass not found, using SSH_ASKPASS fallback.")
+			return executeSSHWithAskPass(args, env, auth.Password)
 		}
 	}
 
@@ -731,6 +791,45 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, e
 	execCmd.Stdout = os.Stdout
 	execCmd.Stderr = os.Stderr
 	execCmd.Env = env
+	return execCmd.Run()
+}
+
+func executeSSHWithAskPass(args []string, env []string, password string) error {
+	if strings.TrimSpace(password) == "" {
+		return errors.New("password auth requires non-empty password")
+	}
+
+	scriptFile, err := os.CreateTemp("", "onessh-askpass-*.sh")
+	if err != nil {
+		return fmt.Errorf("create askpass script: %w", err)
+	}
+	scriptPath := scriptFile.Name()
+	defer os.Remove(scriptPath)
+
+	content := "#!/bin/sh\nprintf '%s\\n' \"$ONESSH_ASKPASS_PASSWORD\"\n"
+	if _, err := scriptFile.WriteString(content); err != nil {
+		_ = scriptFile.Close()
+		return fmt.Errorf("write askpass script: %w", err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		return fmt.Errorf("close askpass script: %w", err)
+	}
+	if err := os.Chmod(scriptPath, 0o700); err != nil {
+		return fmt.Errorf("chmod askpass script: %w", err)
+	}
+
+	askPassEnv := append(env,
+		"SSH_ASKPASS="+scriptPath,
+		"SSH_ASKPASS_REQUIRE=force",
+		"DISPLAY=onessh:0",
+		"ONESSH_ASKPASS_PASSWORD="+password,
+	)
+
+	execCmd := exec.Command("ssh", args...)
+	execCmd.Stdin = os.Stdin
+	execCmd.Stdout = os.Stdout
+	execCmd.Stderr = os.Stderr
+	execCmd.Env = askPassEnv
 	return execCmd.Run()
 }
 
@@ -760,6 +859,195 @@ func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, 
 	}
 
 	return "", store.AuthConfig{}, errors.New("host has no user configured")
+}
+
+func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
+	checks := []string{
+		"alias",
+		"host",
+		"port",
+		"proxy-jump",
+		"user-ref",
+		"user",
+		"auth-type",
+		"key-path",
+		"password",
+	}
+	for _, name := range checks {
+		if cmd.Flags().Changed(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyUserProfileUpdateFlags(
+	cmd *cobra.Command,
+	cfg *store.PlainConfig,
+	host *store.HostConfig,
+	userRefFlag, userName, authTypeFlag, keyPath, password string,
+) error {
+	if cfg.Users == nil {
+		cfg.Users = map[string]store.UserConfig{}
+	}
+
+	changedUserRef := cmd.Flags().Changed("user-ref")
+	changedUser := cmd.Flags().Changed("user")
+	changedAuthType := cmd.Flags().Changed("auth-type")
+	changedKeyPath := cmd.Flags().Changed("key-path")
+	changedPassword := cmd.Flags().Changed("password")
+
+	if changedUserRef {
+		targetRef := normalizeUserAlias(userRefFlag)
+		if targetRef == "" {
+			return errors.New("--user-ref cannot be empty")
+		}
+		if _, ok := cfg.Users[targetRef]; !ok {
+			return fmt.Errorf("user profile %q not found", targetRef)
+		}
+		host.UserRef = targetRef
+		host.User = ""
+	}
+
+	if !changedUser && !changedAuthType && !changedKeyPath && !changedPassword {
+		return nil
+	}
+
+	targetRef := host.UserRef
+	if targetRef == "" {
+		baseUserName := strings.TrimSpace(host.User)
+		if changedUser {
+			baseUserName = strings.TrimSpace(userName)
+		}
+		if baseUserName == "" {
+			return errors.New("host has no user profile; set --user or --user-ref first")
+		}
+		targetRef = ensureUserProfileForName(cfg, baseUserName)
+		host.UserRef = targetRef
+		host.User = ""
+
+		// Preserve legacy host-level auth when creating first user profile.
+		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
+			created := cfg.Users[targetRef]
+			if normalizeAuthType(created.Auth.Type) == "" {
+				host.Auth.Type = normalized
+				created.Auth = host.Auth
+				cfg.Users[targetRef] = created
+			}
+		}
+	}
+
+	userCfg, ok := cfg.Users[targetRef]
+	if !ok {
+		return fmt.Errorf("user profile %q not found", targetRef)
+	}
+
+	if changedUser {
+		trimmed := strings.TrimSpace(userName)
+		if trimmed == "" {
+			return errors.New("--user cannot be empty")
+		}
+		userCfg.Name = trimmed
+	}
+	if strings.TrimSpace(userCfg.Name) == "" {
+		return fmt.Errorf("user profile %q has empty name", targetRef)
+	}
+
+	newAuth, err := authConfigFromFlagValues(
+		userCfg.Auth,
+		authTypeFlag,
+		keyPath,
+		password,
+		changedAuthType,
+		changedKeyPath,
+		changedPassword,
+	)
+	if err != nil {
+		return err
+	}
+	userCfg.Auth = newAuth
+
+	cfg.Users[targetRef] = userCfg
+	return nil
+}
+
+func authConfigFromFlagValues(
+	current store.AuthConfig,
+	authTypeFlag, keyPath, password string,
+	changedAuthType, changedKeyPath, changedPassword bool,
+) (store.AuthConfig, error) {
+	if changedKeyPath && changedPassword {
+		return store.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
+	}
+
+	if changedAuthType {
+		authType := normalizeAuthType(authTypeFlag)
+		if authType == "" {
+			return store.AuthConfig{}, errors.New("--auth-type must be key or password")
+		}
+		switch authType {
+		case "key":
+			path := strings.TrimSpace(keyPath)
+			if !changedKeyPath {
+				path = strings.TrimSpace(current.KeyPath)
+			}
+			if path == "" {
+				return store.AuthConfig{}, errors.New("key auth requires --key-path or existing key path")
+			}
+			return store.AuthConfig{Type: "key", KeyPath: path}, nil
+		case "password":
+			pw := password
+			if !changedPassword {
+				pw = current.Password
+			}
+			if strings.TrimSpace(pw) == "" {
+				return store.AuthConfig{}, errors.New("password auth requires --password or existing password")
+			}
+			return store.AuthConfig{Type: "password", Password: pw}, nil
+		}
+	}
+
+	if changedKeyPath {
+		path := strings.TrimSpace(keyPath)
+		if path == "" {
+			return store.AuthConfig{}, errors.New("--key-path cannot be empty")
+		}
+		return store.AuthConfig{Type: "key", KeyPath: path}, nil
+	}
+
+	if changedPassword {
+		if strings.TrimSpace(password) == "" {
+			return store.AuthConfig{}, errors.New("--password cannot be empty")
+		}
+		return store.AuthConfig{Type: "password", Password: password}, nil
+	}
+
+	if normalized := normalizeAuthType(current.Type); normalized != "" {
+		current.Type = normalized
+		return current, nil
+	}
+	return current, nil
+}
+
+func ensureUserProfileForName(cfg *store.PlainConfig, userName string) string {
+	if alias := findUserAliasByName(cfg.Users, userName); alias != "" {
+		return alias
+	}
+
+	base := normalizeUserAlias(userName)
+	if base == "" {
+		base = "user"
+	}
+	alias := base
+	for i := 2; ; i++ {
+		if _, exists := cfg.Users[alias]; !exists {
+			break
+		}
+		alias = fmt.Sprintf("%s-%d", base, i)
+	}
+
+	cfg.Users[alias] = store.UserConfig{Name: strings.TrimSpace(userName)}
+	return alias
 }
 
 func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
