@@ -4,6 +4,22 @@ English | [中文](#中文说明)
 
 OneSSH is a Go-based SSH host manager that encrypts the entire configuration with a single master password.
 
+## Breaking Changes (v0.2.0)
+
+`v0.2.0` is intentionally **backward-incompatible**.
+
+- Legacy single-file store (`~/.onessh/config.enc`) is no longer supported.
+- New store path is a directory (`~/.onessh/config/`).
+- Host entries must use `user_ref`.
+- Host-level `user` and `auth` are removed.
+- Command aliases `list` / `user list` are removed; use `ls` / `user ls`.
+
+If you are upgrading from old builds, re-initialize and re-import entries manually:
+
+```bash
+onessh init --force
+```
+
 ## Features
 
 - `onessh init` initialize encrypted config
@@ -74,6 +90,25 @@ Store layout (sharded + SOPS-like encrypted values):
 
 Sensitive field values are stored as `ENC[...]` while file structure stays diff-friendly.
 
+Example files:
+
+```yaml
+# ~/.onessh/config/users/ops.yaml
+version: 1
+name: ENC[v1,...]
+auth:
+  type: key
+  key_path: ENC[v1,...]
+```
+
+```yaml
+# ~/.onessh/config/hosts/ais.yaml
+version: 1
+host: ENC[v1,...]
+user_ref: ops
+port: 22
+```
+
 ## Quick Start
 
 ```bash
@@ -128,8 +163,8 @@ This repository includes a `release` workflow:
 Release example:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Before first release, ensure repository setting `Actions > Workflow permissions` is set to **Read and write permissions** so formula updates can be pushed.
@@ -139,6 +174,22 @@ Before first release, ensure repository setting `Actions > Workflow permissions`
 ## 中文说明
 
 OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整个配置文件进行加密。
+
+### v0.2.0 不兼容变更
+
+`v0.2.0` 为主动不兼容版本：
+
+- 不再支持旧的单文件 `~/.onessh/config.enc`
+- 新存储路径改为目录 `~/.onessh/config/`
+- Host 必须使用 `user_ref`
+- Host 层的 `user` 与 `auth` 字段已移除
+- `list` / `user list` 别名已移除，请使用 `ls` / `user ls`
+
+如果从旧版本升级，请手动重建/导入配置：
+
+```bash
+onessh init --force
+```
 
 ### 功能
 
@@ -210,6 +261,25 @@ brew upgrade onessh
 
 敏感字段值以 `ENC[...]` 保存，结构保持可读、便于 Git diff。
 
+示例文件：
+
+```yaml
+# ~/.onessh/config/users/ops.yaml
+version: 1
+name: ENC[v1,...]
+auth:
+  type: key
+  key_path: ENC[v1,...]
+```
+
+```yaml
+# ~/.onessh/config/hosts/ais.yaml
+version: 1
+host: ENC[v1,...]
+user_ref: ops
+port: 22
+```
+
 ### 快速开始
 
 ```bash
@@ -264,8 +334,8 @@ onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
 发布示例：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 首次发布前请确认仓库设置 `Actions > Workflow permissions` 为 **Read and write permissions**，否则公式回写会失败。
