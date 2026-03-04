@@ -33,16 +33,17 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	opts := &rootOptions{}
 
 	rootCmd := &cobra.Command{
-		Use:           "onessh [host]",
+		Use:           "onessh [host] [-- <ssh-args...>]",
 		Short:         "Manage and connect SSH hosts from encrypted config",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          cobra.MaximumNArgs(1),
+		Args:          cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return cmd.Help()
+			alias, sshArgs, err := parseConnectInvocation(cmd, args)
+			if err != nil {
+				return err
 			}
-			return runConnect(cmd, opts, args[0])
+			return runConnect(cmd, opts, alias, sshArgs)
 		},
 	}
 
@@ -428,11 +429,15 @@ func newDumpCmd(opts *rootOptions) *cobra.Command {
 
 func newConnectCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "connect <host-alias>",
+		Use:   "connect <host-alias> [-- <ssh-args...>]",
 		Short: "Connect to a host alias",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConnect(cmd, opts, args[0])
+			alias, sshArgs, err := parseConnectInvocation(cmd, args)
+			if err != nil {
+				return err
+			}
+			return runConnect(cmd, opts, alias, sshArgs)
 		},
 	}
 	return cmd
@@ -733,7 +738,32 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
+func parseConnectInvocation(cmd *cobra.Command, args []string) (string, []string, error) {
+	if len(args) == 0 {
+		return "", nil, errors.New("host alias cannot be empty")
+	}
+
+	alias := strings.TrimSpace(args[0])
+	if alias == "" {
+		return "", nil, errors.New("host alias cannot be empty")
+	}
+
+	var sshArgs []string
+	if len(args) > 1 {
+		sshArgs = append(sshArgs, args[1:]...)
+	}
+	if dashAt := cmd.ArgsLenAtDash(); dashAt >= 0 {
+		if dashAt >= len(args) {
+			sshArgs = nil
+		} else {
+			sshArgs = append([]string{}, args[dashAt:]...)
+		}
+	}
+
+	return alias, sshArgs, nil
+}
+
+func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []string) error {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
 		return errors.New("host alias cannot be empty")
@@ -768,11 +798,11 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
-	return executeSSH(target, userName, auth, cmd.ErrOrStderr())
+	return executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr())
 }
 
-func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, errOut io.Writer) error {
-	args := make([]string, 0, 10)
+func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, sshArgs []string, errOut io.Writer) error {
+	args := make([]string, 0, 10+len(sshArgs))
 
 	if host.Port <= 0 {
 		host.Port = 22
@@ -802,6 +832,7 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, e
 	if userName != "" {
 		destination = fmt.Sprintf("%s@%s", userName, host.Host)
 	}
+	args = append(args, sshArgs...)
 	args = append(args, destination)
 
 	binary := "ssh"

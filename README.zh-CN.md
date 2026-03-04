@@ -18,7 +18,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - `onessh logout` 清除主密码缓存
 - `onessh version` 查看版本/构建信息
 - `onessh dump` 输出解密后的 YAML 到标准输出
-- `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
+- `onessh <alias> [-- <ssh-args...>]` 或 `onessh connect <alias> [-- <ssh-args...>]` 通过 SSH 连接（支持 SSH 参数透传）
 - Host 通过 `user_ref` 关联独立 user profile
 - 认证信息在 user profile 层维护
 - 主密码默认缓存 10 分钟，期间无需重复输入
@@ -100,6 +100,7 @@ port: 22
 ./onessh add web1
 ./onessh ls
 ./onessh web1
+./onessh web1 -- -L 8080:127.0.0.1:80 -N
 ```
 
 添加主机时可以：

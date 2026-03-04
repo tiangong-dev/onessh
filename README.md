@@ -18,7 +18,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - `onessh logout` clear cached master password
 - `onessh version` print version/build info
 - `onessh dump` print decrypted YAML to stdout
-- `onessh <alias>` or `onessh connect <alias>` connect via SSH
+- `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias> [-- <ssh-args...>]` connect via SSH (supports SSH argument passthrough)
 - Hosts reference user profiles via `user_ref`
 - Auth is maintained at profile level
 - Master password cache: no re-prompt within 10 minutes by default
@@ -100,6 +100,7 @@ port: 22
 ./onessh add web1
 ./onessh ls
 ./onessh web1
+./onessh web1 -- -L 8080:127.0.0.1:80 -N
 ```
 
 When adding a host, you can:
