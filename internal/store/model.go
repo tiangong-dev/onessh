@@ -11,13 +11,14 @@ type HostConfig struct {
 	UserRef   string            `yaml:"user_ref,omitempty"`
 	User      string            `yaml:"user,omitempty"`
 	Port      int               `yaml:"port"`
-	Auth      AuthConfig        `yaml:"auth"`
+	Auth      AuthConfig        `yaml:"auth,omitempty"`
 	ProxyJump string            `yaml:"proxy_jump,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
 }
 
 type UserConfig struct {
-	Name string `yaml:"name"`
+	Name string     `yaml:"name"`
+	Auth AuthConfig `yaml:"auth,omitempty"`
 }
 
 type PlainConfig struct {

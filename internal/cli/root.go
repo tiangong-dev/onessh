@@ -324,6 +324,7 @@ func newUserCmd(opts *rootOptions) *cobra.Command {
 	cmd.AddCommand(
 		newUserListCmd(opts),
 		newUserAddCmd(opts),
+		newUserUpdateCmd(opts),
 		newUserRmCmd(opts),
 	)
 	return cmd
@@ -361,10 +362,11 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 
 			for _, alias := range aliases {
 				inUse := usage[alias]
+				auth := summarizeAuth(cfg.Users[alias].Auth)
 				if inUse > 0 {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tused_by=%d\n", alias, cfg.Users[alias].Name, inUse)
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\tused_by=%d\n", alias, cfg.Users[alias].Name, auth, inUse)
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", alias, cfg.Users[alias].Name)
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\n", alias, cfg.Users[alias].Name, auth)
 				}
 			}
 
@@ -376,6 +378,9 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 
 func newUserAddCmd(opts *rootOptions) *cobra.Command {
 	var name string
+	var authType string
+	var keyPath string
+	var password string
 
 	cmd := &cobra.Command{
 		Use:   "add <user-alias>",
@@ -411,7 +416,25 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			cfg.Users[alias] = store.UserConfig{Name: strings.TrimSpace(userName)}
+			var auth store.AuthConfig
+			authType = normalizeAuthType(authType)
+			if authType != "" {
+				auth, err = authConfigFromFlags(authType, keyPath, password)
+				if err != nil {
+					return err
+				}
+			} else {
+				reader := bufio.NewReader(os.Stdin)
+				auth, err = promptAuthConfig(reader, nil)
+				if err != nil {
+					return err
+				}
+			}
+
+			cfg.Users[alias] = store.UserConfig{
+				Name: strings.TrimSpace(userName),
+				Auth: auth,
+			}
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
@@ -422,6 +445,80 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Username value for this profile")
+	cmd.Flags().StringVar(&authType, "auth-type", "", "Auth type (key|password)")
+	cmd.Flags().StringVar(&keyPath, "key-path", "", "SSH private key path when auth-type=key")
+	cmd.Flags().StringVar(&password, "password", "", "SSH password when auth-type=password")
+	return cmd
+}
+
+func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
+	var name string
+	var authType string
+	var keyPath string
+	var password string
+
+	cmd := &cobra.Command{
+		Use:   "update <user-alias>",
+		Short: "Update a user profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := normalizeUserAlias(args[0])
+			if alias == "" {
+				return errors.New("user alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			userCfg, exists := cfg.Users[alias]
+			if !exists {
+				return fmt.Errorf("user profile %q does not exist", alias)
+			}
+
+			if strings.TrimSpace(name) != "" {
+				userCfg.Name = strings.TrimSpace(name)
+			}
+
+			authType = normalizeAuthType(authType)
+			if authType != "" {
+				userCfg.Auth, err = authConfigFromFlags(authType, keyPath, password)
+				if err != nil {
+					return err
+				}
+			} else if strings.TrimSpace(name) == "" {
+				reader := bufio.NewReader(os.Stdin)
+				userCfg.Name, err = promptNonEmpty(reader, "User", userCfg.Name)
+				if err != nil {
+					return err
+				}
+				userCfg.Auth, err = promptAuthConfig(reader, &userCfg.Auth)
+				if err != nil {
+					return err
+				}
+			}
+
+			cfg.Users[alias] = userCfg
+			if err := repo.Save(cfg, pass); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s updated\n", alias)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Username value for this profile")
+	cmd.Flags().StringVar(&authType, "auth-type", "", "Auth type (key|password)")
+	cmd.Flags().StringVar(&keyPath, "key-path", "", "SSH private key path when auth-type=key")
+	cmd.Flags().StringVar(&password, "password", "", "SSH password when auth-type=password")
 	return cmd
 }
 
@@ -519,7 +616,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 	if !exists {
 		return fmt.Errorf("host %q not found", alias)
 	}
-	userName, err := resolveHostUser(cfg, target)
+	userName, auth, err := resolveHostIdentity(cfg, target)
 	if err != nil {
 		return err
 	}
@@ -533,10 +630,10 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
-	return executeSSH(target, userName, cmd.ErrOrStderr())
+	return executeSSH(target, userName, auth, cmd.ErrOrStderr())
 }
 
-func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error {
+func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, errOut io.Writer) error {
 	args := make([]string, 0, 10)
 
 	if host.Port <= 0 {
@@ -549,10 +646,10 @@ func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error 
 		args = append(args, "-J", host.ProxyJump)
 	}
 
-	switch strings.ToLower(host.Auth.Type) {
+	switch strings.ToLower(auth.Type) {
 	case "key":
-		if host.Auth.KeyPath != "" {
-			keyPath, err := expandTilde(host.Auth.KeyPath)
+		if auth.KeyPath != "" {
+			keyPath, err := expandTilde(auth.KeyPath)
 			if err != nil {
 				return err
 			}
@@ -560,7 +657,7 @@ func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error 
 		}
 	case "password":
 	default:
-		return fmt.Errorf("unsupported auth type: %s", host.Auth.Type)
+		return fmt.Errorf("unsupported auth type: %s", auth.Type)
 	}
 
 	destination := host.Host
@@ -571,11 +668,11 @@ func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error 
 
 	binary := "ssh"
 	env := os.Environ()
-	if strings.ToLower(host.Auth.Type) == "password" && host.Auth.Password != "" {
+	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
 		if _, err := exec.LookPath("sshpass"); err == nil {
 			binary = "sshpass"
 			args = append([]string{"-e", "ssh"}, args...)
-			env = append(env, "SSHPASS="+host.Auth.Password)
+			env = append(env, "SSHPASS="+auth.Password)
 		} else {
 			fmt.Fprintln(errOut, "sshpass not found, ssh will prompt password interactively.")
 		}
@@ -589,20 +686,32 @@ func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error 
 	return execCmd.Run()
 }
 
-func resolveHostUser(cfg store.PlainConfig, host store.HostConfig) (string, error) {
+func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
 	if host.UserRef != "" {
 		userCfg, ok := cfg.Users[host.UserRef]
 		if !ok || strings.TrimSpace(userCfg.Name) == "" {
-			return "", fmt.Errorf("host references missing user profile: %s", host.UserRef)
+			return "", store.AuthConfig{}, fmt.Errorf("host references missing user profile: %s", host.UserRef)
 		}
-		return strings.TrimSpace(userCfg.Name), nil
+		if normalized := normalizeAuthType(userCfg.Auth.Type); normalized != "" {
+			userCfg.Auth.Type = normalized
+			return strings.TrimSpace(userCfg.Name), userCfg.Auth, nil
+		}
+		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
+			host.Auth.Type = normalized
+			return strings.TrimSpace(userCfg.Name), host.Auth, nil
+		}
+		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has no auth configured", host.UserRef)
 	}
 
 	if strings.TrimSpace(host.User) != "" {
-		return strings.TrimSpace(host.User), nil
+		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
+			host.Auth.Type = normalized
+			return strings.TrimSpace(host.User), host.Auth, nil
+		}
+		return "", store.AuthConfig{}, fmt.Errorf("host %s has no auth configured", host.Host)
 	}
 
-	return "", errors.New("host has no user configured")
+	return "", store.AuthConfig{}, errors.New("host has no user configured")
 }
 
 func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
@@ -650,37 +759,39 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	inputReader := bufio.NewReader(os.Stdin)
 	defaultUserName := currentUserName()
 	defaultUserRef := ""
+	defaultUserAuth := store.AuthConfig{
+		Type:    "key",
+		KeyPath: "~/.ssh/id_ed25519",
+	}
 
 	defaultHost := ""
 	defaultPort := 22
-	defaultAuthType := "key"
-	defaultKeyPath := "~/.ssh/id_ed25519"
 	defaultProxyJump := ""
-	defaultPassword := ""
 	defaultEnv := map[string]string{}
+	hostAuthFallback := store.AuthConfig{}
 
 	if existing != nil {
 		defaultHost = existing.Host
+		hostAuthFallback = existing.Auth
 		if existing.UserRef != "" {
 			if userCfg, ok := cfg.Users[existing.UserRef]; ok && strings.TrimSpace(userCfg.Name) != "" {
 				defaultUserRef = existing.UserRef
 				defaultUserName = strings.TrimSpace(userCfg.Name)
+				if normalizeAuthType(userCfg.Auth.Type) != "" {
+					defaultUserAuth = userCfg.Auth
+				}
 			}
 		}
 		if defaultUserRef == "" && existing.User != "" {
 			defaultUserName = existing.User
+			if normalizeAuthType(existing.Auth.Type) != "" {
+				defaultUserAuth = existing.Auth
+			}
 		}
 		if existing.Port > 0 {
 			defaultPort = existing.Port
 		}
-		if existing.Auth.Type != "" {
-			defaultAuthType = strings.ToLower(existing.Auth.Type)
-		}
-		if existing.Auth.KeyPath != "" {
-			defaultKeyPath = existing.Auth.KeyPath
-		}
 		defaultProxyJump = existing.ProxyJump
-		defaultPassword = existing.Auth.Password
 		defaultEnv = existing.Env
 	}
 
@@ -688,50 +799,13 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	if err != nil {
 		return store.HostConfig{}, err
 	}
-	userRef, err := promptUserRefForHost(inputReader, cfg, defaultUserRef, defaultUserName)
+	userRef, err := promptUserRefForHost(inputReader, cfg, defaultUserRef, defaultUserName, &defaultUserAuth)
 	if err != nil {
 		return store.HostConfig{}, err
 	}
 	port, err := promptPort(inputReader, defaultPort)
 	if err != nil {
 		return store.HostConfig{}, err
-	}
-
-	authType, err := promptAuthType(inputReader, defaultAuthType)
-	if err != nil {
-		return store.HostConfig{}, err
-	}
-
-	auth := store.AuthConfig{Type: authType}
-	switch authType {
-	case "key":
-		keyPath, err := promptNonEmpty(inputReader, "Key path", defaultKeyPath)
-		if err != nil {
-			return store.HostConfig{}, err
-		}
-		auth.KeyPath = keyPath
-	case "password":
-		if existing != nil && defaultPassword != "" {
-			password, changed, err := promptOptionalSecret("Password (press Enter to keep current): ")
-			if err != nil {
-				return store.HostConfig{}, err
-			}
-			if changed {
-				auth.Password = string(password)
-				wipe(password)
-			} else {
-				auth.Password = defaultPassword
-			}
-		} else {
-			password, err := promptRequiredPassword("Password: ")
-			if err != nil {
-				return store.HostConfig{}, err
-			}
-			auth.Password = string(password)
-			wipe(password)
-		}
-	default:
-		return store.HostConfig{}, fmt.Errorf("unsupported auth type: %s", authType)
 	}
 
 	proxyJump, err := promptOptional(inputReader, "Proxy jump", defaultProxyJump)
@@ -743,7 +817,7 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		Host:      host,
 		UserRef:   userRef,
 		Port:      port,
-		Auth:      auth,
+		Auth:      hostAuthFallback,
 		ProxyJump: proxyJump,
 		Env:       defaultEnv,
 	}, nil
@@ -753,25 +827,27 @@ func promptUserRefForHost(
 	reader *bufio.Reader,
 	cfg *store.PlainConfig,
 	defaultUserRef, defaultUserName string,
+	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
 	if cfg.Users == nil {
 		cfg.Users = map[string]store.UserConfig{}
 	}
 
 	if len(cfg.Users) == 0 {
-		return createOrReuseUserProfile(reader, cfg, defaultUserName)
+		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 	}
 
 	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName)
+		return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
 	}
-	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName)
+	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
 }
 
 func promptUserRefSelect(
 	reader *bufio.Reader,
 	cfg *store.PlainConfig,
 	defaultUserRef, defaultUserName string,
+	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
 	aliases := sortedUserAliases(cfg.Users)
 	items := make([]string, 0, len(aliases)+1)
@@ -802,7 +878,7 @@ func promptUserRefSelect(
 		return "", err
 	}
 	if index == 0 {
-		return createOrReuseUserProfile(reader, cfg, defaultUserName)
+		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 	}
 	return aliases[index-1], nil
 }
@@ -811,6 +887,7 @@ func promptUserRefText(
 	reader *bufio.Reader,
 	cfg *store.PlainConfig,
 	defaultUserRef, defaultUserName string,
+	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
 	aliases := sortedUserAliases(cfg.Users)
 	fmt.Fprintln(os.Stderr, "Available user profiles:")
@@ -830,7 +907,7 @@ func promptUserRefText(
 		}
 		choice := strings.TrimSpace(raw)
 		if strings.EqualFold(choice, "new") || choice == "0" {
-			return createOrReuseUserProfile(reader, cfg, defaultUserName)
+			return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 		}
 		if _, ok := cfg.Users[choice]; ok {
 			return choice, nil
@@ -847,6 +924,7 @@ func createOrReuseUserProfile(
 	reader *bufio.Reader,
 	cfg *store.PlainConfig,
 	defaultUserName string,
+	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
 	userName, err := promptNonEmpty(reader, "User", defaultUserName)
 	if err != nil {
@@ -879,7 +957,15 @@ func createOrReuseUserProfile(
 			continue
 		}
 
-		cfg.Users[alias] = store.UserConfig{Name: userName}
+		auth, err := promptAuthConfig(reader, defaultUserAuth)
+		if err != nil {
+			return "", err
+		}
+
+		cfg.Users[alias] = store.UserConfig{
+			Name: userName,
+			Auth: auth,
+		}
 		return alias, nil
 	}
 }
@@ -978,8 +1064,84 @@ func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
 	}
 }
 
+func promptAuthConfig(reader *bufio.Reader, existing *store.AuthConfig) (store.AuthConfig, error) {
+	defaultType := "key"
+	defaultKeyPath := "~/.ssh/id_ed25519"
+	defaultPassword := ""
+	if existing != nil {
+		if normalized := normalizeAuthType(existing.Type); normalized != "" {
+			defaultType = normalized
+		}
+		if existing.KeyPath != "" {
+			defaultKeyPath = existing.KeyPath
+		}
+		defaultPassword = existing.Password
+	}
+
+	authType, err := promptAuthType(reader, defaultType)
+	if err != nil {
+		return store.AuthConfig{}, err
+	}
+
+	auth := store.AuthConfig{Type: authType}
+	switch authType {
+	case "key":
+		keyPath, err := promptNonEmpty(reader, "Key path", defaultKeyPath)
+		if err != nil {
+			return store.AuthConfig{}, err
+		}
+		auth.KeyPath = keyPath
+	case "password":
+		if existing != nil && defaultPassword != "" {
+			password, changed, err := promptOptionalSecret("Password (press Enter to keep current): ")
+			if err != nil {
+				return store.AuthConfig{}, err
+			}
+			if changed {
+				auth.Password = string(password)
+				wipe(password)
+			} else {
+				auth.Password = defaultPassword
+			}
+		} else {
+			password, err := promptRequiredPassword("Password: ")
+			if err != nil {
+				return store.AuthConfig{}, err
+			}
+			auth.Password = string(password)
+			wipe(password)
+		}
+	default:
+		return store.AuthConfig{}, fmt.Errorf("unsupported auth type: %s", authType)
+	}
+
+	return auth, nil
+}
+
+func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, error) {
+	auth := store.AuthConfig{Type: authType}
+	switch authType {
+	case "key":
+		if strings.TrimSpace(keyPath) == "" {
+			return store.AuthConfig{}, errors.New("key-path is required when auth-type=key")
+		}
+		auth.KeyPath = strings.TrimSpace(keyPath)
+	case "password":
+		if strings.TrimSpace(password) == "" {
+			return store.AuthConfig{}, errors.New("password is required when auth-type=password")
+		}
+		auth.Password = password
+	default:
+		return store.AuthConfig{}, errors.New("auth-type must be key or password")
+	}
+	return auth, nil
+}
+
 func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 	defaultType = normalizeAuthType(defaultType)
+	if defaultType == "" {
+		defaultType = "key"
+	}
 	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		return promptAuthTypeSelect(defaultType)
 	}
@@ -1029,6 +1191,20 @@ func normalizeAuthType(input string) string {
 		return "password"
 	default:
 		return ""
+	}
+}
+
+func summarizeAuth(auth store.AuthConfig) string {
+	switch normalizeAuthType(auth.Type) {
+	case "key":
+		if strings.TrimSpace(auth.KeyPath) != "" {
+			return "key:" + strings.TrimSpace(auth.KeyPath)
+		}
+		return "key"
+	case "password":
+		return "password"
+	default:
+		return "none"
 	}
 }
 

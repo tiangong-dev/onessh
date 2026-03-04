@@ -12,12 +12,14 @@ OneSSH is a Go-based SSH host manager that encrypts the entire configuration wit
 - `onessh rm <alias>` remove a host
 - `onessh list` list host aliases
 - `onessh user list` list reusable users
-- `onessh user add <alias> --name <user>` add a reusable user
+- `onessh user add <alias> --name <user>` add a reusable user (with auth)
+- `onessh user update <alias>` update reusable user auth/profile
 - `onessh user rm <alias>` remove a reusable user
 - `onessh logout` clear cached master password
 - `onessh dump` print decrypted YAML to stdout
 - `onessh <alias>` or `onessh connect <alias>` connect via SSH
 - Reusable user profiles: hosts can reference shared users (`user_ref`)
+- Auth is profile-level: user profiles include auth settings
 - Master password cache: by default, no re-prompt within 10 minutes
 
 ## Build
@@ -71,6 +73,19 @@ When adding a host, you can either:
 - create a new user profile by entering a username, or
 - select an existing user profile from the list.
 
+User profile YAML shape:
+
+```yaml
+users:
+  ops:
+    name: ubuntu
+    auth:
+      type: key
+      key_path: ~/.ssh/id_ed25519
+```
+
+Compatibility note: legacy `hosts.<alias>.auth` is still read as fallback for older configs.
+
 ## Security Notes
 
 - Encryption: Argon2id + AES-256-GCM
@@ -110,12 +125,14 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 - `onessh rm <alias>` 删除主机
 - `onessh list` 列出主机别名
 - `onessh user list` 列出可复用 user
-- `onessh user add <alias> --name <user>` 新增可复用 user
+- `onessh user add <alias> --name <user>` 新增可复用 user（含认证信息）
+- `onessh user update <alias>` 更新可复用 user 的认证/配置
 - `onessh user rm <alias>` 删除可复用 user
 - `onessh logout` 清除主密码缓存
 - `onessh dump` 输出解密后的 YAML 到标准输出
 - `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
 - 支持复用用户配置：Host 可通过 `user_ref` 关联独立用户
+- 认证信息在 user profile 层维护（而不是 host 层）
 - 主密码默认缓存 10 分钟，期间无需重复输入
 
 ### 构建
@@ -168,6 +185,19 @@ brew upgrade onessh
 添加主机时可以：
 - 输入新的 user（会创建可复用 user profile），或
 - 直接选择一个已有的 user profile。
+
+User profile 的 YAML 结构示例：
+
+```yaml
+users:
+  ops:
+    name: ubuntu
+    auth:
+      type: key
+      key_path: ~/.ssh/id_ed25519
+```
+
+兼容说明：旧配置中的 `hosts.<alias>.auth` 仍会作为回退逻辑被读取。
 
 ### 安全说明
 
