@@ -8,19 +8,26 @@ type AuthConfig struct {
 
 type HostConfig struct {
 	Host      string            `yaml:"host"`
-	User      string            `yaml:"user"`
+	UserRef   string            `yaml:"user_ref,omitempty"`
+	User      string            `yaml:"user,omitempty"`
 	Port      int               `yaml:"port"`
 	Auth      AuthConfig        `yaml:"auth"`
 	ProxyJump string            `yaml:"proxy_jump,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
 }
 
+type UserConfig struct {
+	Name string `yaml:"name"`
+}
+
 type PlainConfig struct {
+	Users map[string]UserConfig `yaml:"users,omitempty"`
 	Hosts map[string]HostConfig `yaml:"hosts"`
 }
 
 func NewPlainConfig() PlainConfig {
 	return PlainConfig{
+		Users: map[string]UserConfig{},
 		Hosts: map[string]HostConfig{},
 	}
 }

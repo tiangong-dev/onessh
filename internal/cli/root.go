@@ -130,7 +130,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("host %q already exists (use update)", alias)
 			}
 
-			newHost, err := promptHostConfig(nil)
+			newHost, err := promptHostConfig(&cfg, nil)
 			if err != nil {
 				return err
 			}
@@ -174,7 +174,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("host %q does not exist", alias)
 			}
 
-			updatedHost, err := promptHostConfig(&existing)
+			updatedHost, err := promptHostConfig(&cfg, &existing)
 			if err != nil {
 				return err
 			}
@@ -325,20 +325,24 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 	if !exists {
 		return fmt.Errorf("host %q not found", alias)
 	}
+	userName, err := resolveHostUser(cfg, target)
+	if err != nil {
+		return err
+	}
 
 	displayPort := target.Port
 	if displayPort <= 0 {
 		displayPort = 22
 	}
 	displayTarget := target.Host
-	if target.User != "" {
-		displayTarget = fmt.Sprintf("%s@%s", target.User, target.Host)
+	if userName != "" {
+		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
-	return executeSSH(target, cmd.ErrOrStderr())
+	return executeSSH(target, userName, cmd.ErrOrStderr())
 }
 
-func executeSSH(host store.HostConfig, errOut io.Writer) error {
+func executeSSH(host store.HostConfig, userName string, errOut io.Writer) error {
 	args := make([]string, 0, 10)
 
 	if host.Port <= 0 {
@@ -366,8 +370,8 @@ func executeSSH(host store.HostConfig, errOut io.Writer) error {
 	}
 
 	destination := host.Host
-	if host.User != "" {
-		destination = fmt.Sprintf("%s@%s", host.User, host.Host)
+	if userName != "" {
+		destination = fmt.Sprintf("%s@%s", userName, host.Host)
 	}
 	args = append(args, destination)
 
@@ -391,6 +395,22 @@ func executeSSH(host store.HostConfig, errOut io.Writer) error {
 	return execCmd.Run()
 }
 
+func resolveHostUser(cfg store.PlainConfig, host store.HostConfig) (string, error) {
+	if host.UserRef != "" {
+		userCfg, ok := cfg.Users[host.UserRef]
+		if !ok || strings.TrimSpace(userCfg.Name) == "" {
+			return "", fmt.Errorf("host references missing user profile: %s", host.UserRef)
+		}
+		return strings.TrimSpace(userCfg.Name), nil
+	}
+
+	if strings.TrimSpace(host.User) != "" {
+		return strings.TrimSpace(host.User), nil
+	}
+
+	return "", errors.New("host has no user configured")
+}
+
 func loadConfig(repo store.Repository) (store.PlainConfig, []byte, error) {
 	passphrase, err := promptRequiredPassword("Enter master password: ")
 	if err != nil {
@@ -408,9 +428,17 @@ func loadConfig(repo store.Repository) (store.PlainConfig, []byte, error) {
 	return cfg, passphrase, nil
 }
 
-func promptHostConfig(existing *store.HostConfig) (store.HostConfig, error) {
+func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store.HostConfig, error) {
+	if cfg == nil {
+		return store.HostConfig{}, errors.New("config is required")
+	}
+	if cfg.Users == nil {
+		cfg.Users = map[string]store.UserConfig{}
+	}
+
 	inputReader := bufio.NewReader(os.Stdin)
-	defaultUser := currentUserName()
+	defaultUserName := currentUserName()
+	defaultUserRef := ""
 
 	defaultHost := ""
 	defaultPort := 22
@@ -422,8 +450,14 @@ func promptHostConfig(existing *store.HostConfig) (store.HostConfig, error) {
 
 	if existing != nil {
 		defaultHost = existing.Host
-		if existing.User != "" {
-			defaultUser = existing.User
+		if existing.UserRef != "" {
+			if userCfg, ok := cfg.Users[existing.UserRef]; ok && strings.TrimSpace(userCfg.Name) != "" {
+				defaultUserRef = existing.UserRef
+				defaultUserName = strings.TrimSpace(userCfg.Name)
+			}
+		}
+		if defaultUserRef == "" && existing.User != "" {
+			defaultUserName = existing.User
 		}
 		if existing.Port > 0 {
 			defaultPort = existing.Port
@@ -443,7 +477,7 @@ func promptHostConfig(existing *store.HostConfig) (store.HostConfig, error) {
 	if err != nil {
 		return store.HostConfig{}, err
 	}
-	userName, err := promptNonEmpty(inputReader, "User", defaultUser)
+	userRef, err := promptUserRefForHost(inputReader, cfg, defaultUserRef, defaultUserName)
 	if err != nil {
 		return store.HostConfig{}, err
 	}
@@ -496,12 +530,186 @@ func promptHostConfig(existing *store.HostConfig) (store.HostConfig, error) {
 
 	return store.HostConfig{
 		Host:      host,
-		User:      userName,
+		UserRef:   userRef,
 		Port:      port,
 		Auth:      auth,
 		ProxyJump: proxyJump,
 		Env:       defaultEnv,
 	}, nil
+}
+
+func promptUserRefForHost(
+	reader *bufio.Reader,
+	cfg *store.PlainConfig,
+	defaultUserRef, defaultUserName string,
+) (string, error) {
+	if cfg.Users == nil {
+		cfg.Users = map[string]store.UserConfig{}
+	}
+
+	if len(cfg.Users) == 0 {
+		return createOrReuseUserProfile(reader, cfg, defaultUserName)
+	}
+
+	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName)
+	}
+	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName)
+}
+
+func promptUserRefSelect(
+	reader *bufio.Reader,
+	cfg *store.PlainConfig,
+	defaultUserRef, defaultUserName string,
+) (string, error) {
+	aliases := sortedUserAliases(cfg.Users)
+	items := make([]string, 0, len(aliases)+1)
+	items = append(items, "Create new user profile")
+	for _, alias := range aliases {
+		items = append(items, fmt.Sprintf("%s (%s)", alias, cfg.Users[alias].Name))
+	}
+
+	cursorPos := 0
+	for i, alias := range aliases {
+		if alias == defaultUserRef {
+			cursorPos = i + 1
+			break
+		}
+	}
+
+	prompt := promptui.Select{
+		Label:             "User profile (use ↑/↓ and Enter)",
+		Items:             items,
+		CursorPos:         cursorPos,
+		Size:              len(items),
+		HideHelp:          true,
+		StartInSearchMode: false,
+	}
+
+	index, _, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+	if index == 0 {
+		return createOrReuseUserProfile(reader, cfg, defaultUserName)
+	}
+	return aliases[index-1], nil
+}
+
+func promptUserRefText(
+	reader *bufio.Reader,
+	cfg *store.PlainConfig,
+	defaultUserRef, defaultUserName string,
+) (string, error) {
+	aliases := sortedUserAliases(cfg.Users)
+	fmt.Fprintln(os.Stderr, "Available user profiles:")
+	for i, alias := range aliases {
+		fmt.Fprintf(os.Stderr, "  %d) %s (%s)\n", i+1, alias, cfg.Users[alias].Name)
+	}
+
+	defaultChoice := defaultUserRef
+	if defaultChoice == "" {
+		defaultChoice = "new"
+	}
+
+	for {
+		raw, err := promptOptional(reader, "User profile (alias/index/new)", defaultChoice)
+		if err != nil {
+			return "", err
+		}
+		choice := strings.TrimSpace(raw)
+		if strings.EqualFold(choice, "new") || choice == "0" {
+			return createOrReuseUserProfile(reader, cfg, defaultUserName)
+		}
+		if _, ok := cfg.Users[choice]; ok {
+			return choice, nil
+		}
+		index, err := strconv.Atoi(choice)
+		if err == nil && index >= 1 && index <= len(aliases) {
+			return aliases[index-1], nil
+		}
+		fmt.Fprintln(os.Stderr, "Invalid user profile. Use alias/index or type new.")
+	}
+}
+
+func createOrReuseUserProfile(
+	reader *bufio.Reader,
+	cfg *store.PlainConfig,
+	defaultUserName string,
+) (string, error) {
+	userName, err := promptNonEmpty(reader, "User", defaultUserName)
+	if err != nil {
+		return "", err
+	}
+	userName = strings.TrimSpace(userName)
+
+	if existingAlias := findUserAliasByName(cfg.Users, userName); existingAlias != "" {
+		fmt.Fprintf(os.Stderr, "Using existing user profile: %s (%s)\n", existingAlias, userName)
+		return existingAlias, nil
+	}
+
+	defaultAlias := normalizeUserAlias(userName)
+	for {
+		alias, err := promptNonEmpty(reader, "User profile alias", defaultAlias)
+		if err != nil {
+			return "", err
+		}
+		alias = normalizeUserAlias(alias)
+		if alias == "" {
+			fmt.Fprintln(os.Stderr, "User profile alias cannot be empty.")
+			continue
+		}
+
+		if existing, exists := cfg.Users[alias]; exists {
+			if strings.EqualFold(strings.TrimSpace(existing.Name), userName) {
+				return alias, nil
+			}
+			fmt.Fprintf(os.Stderr, "User profile alias %q already exists.\n", alias)
+			continue
+		}
+
+		cfg.Users[alias] = store.UserConfig{Name: userName}
+		return alias, nil
+	}
+}
+
+func sortedUserAliases(users map[string]store.UserConfig) []string {
+	aliases := make([]string, 0, len(users))
+	for alias := range users {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return aliases
+}
+
+func findUserAliasByName(users map[string]store.UserConfig, name string) string {
+	normalizedName := strings.TrimSpace(name)
+	for alias, cfg := range users {
+		if strings.EqualFold(strings.TrimSpace(cfg.Name), normalizedName) {
+			return alias
+		}
+	}
+	return ""
+}
+
+func normalizeUserAlias(input string) string {
+	raw := strings.ToLower(strings.TrimSpace(input))
+	raw = strings.ReplaceAll(raw, " ", "-")
+	if raw == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, ch := range raw {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' {
+			b.WriteRune(ch)
+		}
+	}
+	alias := strings.Trim(b.String(), "-_.")
+	if alias == "" {
+		return "user"
+	}
+	return alias
 }
 
 func promptNonEmpty(reader *bufio.Reader, label, defaultValue string) (string, error) {

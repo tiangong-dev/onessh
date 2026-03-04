@@ -14,17 +14,15 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config.enc")}
 	pass := []byte("top-secret-master-password")
 
-	source := PlainConfig{
-		Hosts: map[string]HostConfig{
-			"web1": {
-				Host: "1.2.3.4",
-				User: "ubuntu",
-				Port: 22,
-				Auth: AuthConfig{
-					Type:    "key",
-					KeyPath: "~/.ssh/id_ed25519",
-				},
-			},
+	source := NewPlainConfig()
+	source.Users["ops"] = UserConfig{Name: "ubuntu"}
+	source.Hosts["web1"] = HostConfig{
+		Host:    "1.2.3.4",
+		UserRef: "ops",
+		Port:    22,
+		Auth: AuthConfig{
+			Type:    "key",
+			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
 

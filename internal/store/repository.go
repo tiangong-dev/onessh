@@ -59,12 +59,18 @@ func (r Repository) Load(passphrase []byte) (PlainConfig, error) {
 	if cfg.Hosts == nil {
 		cfg.Hosts = map[string]HostConfig{}
 	}
+	if cfg.Users == nil {
+		cfg.Users = map[string]UserConfig{}
+	}
 	return cfg, nil
 }
 
 func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 	if cfg.Hosts == nil {
 		cfg.Hosts = map[string]HostConfig{}
+	}
+	if cfg.Users == nil {
+		cfg.Users = map[string]UserConfig{}
 	}
 
 	plaintext, err := yaml.Marshal(cfg)

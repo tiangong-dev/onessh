@@ -13,6 +13,7 @@ OneSSH is a Go-based SSH host manager that encrypts the entire configuration wit
 - `onessh list` list host aliases
 - `onessh dump` print decrypted YAML to stdout
 - `onessh <alias>` or `onessh connect <alias>` connect via SSH
+- Reusable user profiles: hosts can reference shared users (`user_ref`)
 
 ## Build
 
@@ -58,6 +59,10 @@ Override options:
 ./onessh web1
 ```
 
+When adding a host, you can either:
+- create a new user profile by entering a username, or
+- select an existing user profile from the list.
+
 ## Security Notes
 
 - Encryption: Argon2id + AES-256-GCM
@@ -98,6 +103,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 - `onessh list` 列出主机别名
 - `onessh dump` 输出解密后的 YAML 到标准输出
 - `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
+- 支持复用用户配置：Host 可通过 `user_ref` 关联独立用户
 
 ### 构建
 
@@ -142,6 +148,10 @@ brew upgrade onessh
 ./onessh list
 ./onessh web1
 ```
+
+添加主机时可以：
+- 输入新的 user（会创建可复用 user profile），或
+- 直接选择一个已有的 user profile。
 
 ### 安全说明
 
