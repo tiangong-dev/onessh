@@ -1,165 +1,10 @@
 # onessh
 
-English | [中文](#中文说明)
+[English](README.en.md)
 
-OneSSH is a Go-based SSH host manager that encrypts the entire configuration with a single master password.
+OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配置进行加密管理。
 
-## Features
-
-- `onessh init` initialize encrypted config
-- `onessh add <alias>` add a host
-- `onessh update <alias>` update a host (interactive or with generic flags)
-- `onessh rm <alias>` remove a host
-- `onessh ls` list hosts with user/auth/port summary
-- `onessh user ls` list reusable users
-- `onessh user add <alias> --name <user>` add a reusable user (with auth)
-- `onessh user update <alias>` update reusable user auth/profile
-- `onessh user rm <alias>` remove a reusable user
-- `onessh logout` clear cached master password
-- `onessh version` print version/build info
-- `onessh dump` print decrypted YAML to stdout
-- `onessh <alias>` or `onessh connect <alias>` connect via SSH
-- Reusable user profiles: hosts can reference shared users (`user_ref`)
-- Auth is profile-level: user profiles include auth settings
-- Master password cache: by default, no re-prompt within 10 minutes
-
-## Build
-
-```bash
-go build -o onessh ./cmd/onessh
-```
-
-## Install (Homebrew)
-
-The release pipeline automatically updates `Formula/onessh.rb`.
-
-```bash
-brew tap tiangong-dev/onessh https://github.com/tiangong-dev/onessh
-brew install tiangong-dev/onessh/onessh
-```
-
-Upgrade:
-
-```bash
-brew update
-brew upgrade onessh
-```
-
-## Configuration File
-
-Default path:
-
-```text
-~/.onessh/config
-```
-
-Override options:
-
-- Environment variable: `ONESSH_CONFIG`
-- CLI flag: `--config /path/to/config`
-- CLI flag: `--cache-ttl 10m` (default: 10 minutes)
-- CLI flag: `--no-cache` to disable cache
-- Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
-
-Store layout (sharded + SOPS-like encrypted values):
-
-```text
-~/.onessh/config/
-  meta.yaml
-  users/
-    <alias>.yaml
-  hosts/
-    <alias>.yaml
-```
-
-Sensitive field values are stored as `ENC[...]` while file structure stays diff-friendly.
-
-Example files:
-
-```yaml
-# ~/.onessh/config/users/ops.yaml
-version: 1
-name: ENC[v1,...]
-auth:
-  type: key
-  key_path: ENC[v1,...]
-```
-
-```yaml
-# ~/.onessh/config/hosts/ais.yaml
-version: 1
-host: ENC[v1,...]
-user_ref: ops
-port: 22
-```
-
-## Quick Start
-
-```bash
-./onessh init
-./onessh add web1
-./onessh ls
-./onessh web1
-```
-
-When adding a host, you can either:
-- create a new user profile by entering a username, or
-- select an existing user profile from the list.
-
-User profile YAML shape:
-
-```yaml
-users:
-  ops:
-    name: ubuntu
-    auth:
-      type: key
-      key_path: ~/.ssh/id_ed25519
-```
-
-Host entries must include `user_ref` and do not carry `auth`/`user` fields.
-
-Non-interactive host update examples:
-
-```bash
-onessh update ais --alias pi
-onessh update ais --host 10.0.0.12 --port 2222
-onessh update ais --user-ref ops
-onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
-```
-
-## Security Notes
-
-- Encryption: Argon2id + AES-256-GCM
-- Only encrypted data is stored on disk (Git-friendly)
-- Master password and plaintext only exist in memory at runtime
-
-## Automated Release (GitHub Actions)
-
-This repository includes a `release` workflow:
-
-- Trigger: push tag `v*` (for example `v0.1.0`)
-- Actions:
-  - Build multi-platform binaries (Linux/macOS/Windows, amd64/arm64)
-  - Create GitHub Release and checksums automatically
-  - Update Homebrew formula (`Formula/onessh.rb`) automatically
-
-Release example:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-Before first release, ensure repository setting `Actions > Workflow permissions` is set to **Read and write permissions** so formula updates can be pushed.
-
----
-
-## 中文说明
-
-OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整个配置文件进行加密。
-
-### 功能
+## 功能
 
 - `onessh init` 初始化加密配置
 - `onessh add <alias>` 添加主机
@@ -174,17 +19,17 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 - `onessh version` 查看版本/构建信息
 - `onessh dump` 输出解密后的 YAML 到标准输出
 - `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
-- 支持复用用户配置：Host 可通过 `user_ref` 关联独立用户
-- 认证信息在 user profile 层维护（而不是 host 层）
+- Host 通过 `user_ref` 关联独立 user profile
+- 认证信息在 user profile 层维护
 - 主密码默认缓存 10 分钟，期间无需重复输入
 
-### 构建
+## 构建
 
 ```bash
 go build -o onessh ./cmd/onessh
 ```
 
-### 安装（Homebrew）
+## 安装（Homebrew）
 
 发布流水线会自动更新 `Formula/onessh.rb`。
 
@@ -200,7 +45,7 @@ brew update
 brew upgrade onessh
 ```
 
-### 配置文件
+## 配置文件
 
 默认路径：
 
@@ -248,7 +93,7 @@ user_ref: ops
 port: 22
 ```
 
-### 快速开始
+## 快速开始
 
 ```bash
 ./onessh init
@@ -258,6 +103,7 @@ port: 22
 ```
 
 添加主机时可以：
+
 - 输入新的 user（会创建可复用 user profile），或
 - 直接选择一个已有的 user profile。
 
@@ -272,7 +118,7 @@ users:
       key_path: ~/.ssh/id_ed25519
 ```
 
-Host 条目必须包含 `user_ref`，不再在 host 层保存 `auth` / `user` 字段。
+Host 条目必须包含 `user_ref`，不在 host 层保存 `auth` / `user` 字段。
 
 非交互更新示例：
 
@@ -283,17 +129,17 @@ onessh update ais --user-ref ops
 onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
 ```
 
-### 安全说明
+## 安全说明
 
 - 加密方案：Argon2id + AES-256-GCM
 - 磁盘仅保存密文，适合进入 Git 管理
 - 主密码与明文仅在运行时内存中存在
 
-### 自动发布（GitHub Actions）
+## 自动发布（GitHub Actions）
 
 仓库已配置 `release` workflow：
 
-- 触发条件：推送 tag `v*`（例如 `v0.1.0`）
+- 触发条件：推送 tag `v*`（例如 `v0.2.0`）
 - 自动执行：
   - 构建多平台二进制（Linux/macOS/Windows, amd64/arm64）
   - 自动创建 GitHub Release 与 checksums

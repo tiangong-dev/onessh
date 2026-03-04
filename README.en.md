@@ -1,0 +1,155 @@
+# onessh
+
+[中文](README.md)
+
+OneSSH is a Go-based SSH host manager that encrypts configuration with a single master password.
+
+## Features
+
+- `onessh init` initialize encrypted config
+- `onessh add <alias>` add a host
+- `onessh update <alias>` update a host (interactive or with generic flags)
+- `onessh rm <alias>` remove a host
+- `onessh ls` list hosts with user/auth/port summary
+- `onessh user ls` list reusable users
+- `onessh user add <alias> --name <user>` add a reusable user (with auth)
+- `onessh user update <alias>` update reusable user auth/profile
+- `onessh user rm <alias>` remove a reusable user
+- `onessh logout` clear cached master password
+- `onessh version` print version/build info
+- `onessh dump` print decrypted YAML to stdout
+- `onessh <alias>` or `onessh connect <alias>` connect via SSH
+- Hosts reference user profiles via `user_ref`
+- Auth is maintained at profile level
+- Master password cache: no re-prompt within 10 minutes by default
+
+## Build
+
+```bash
+go build -o onessh ./cmd/onessh
+```
+
+## Install (Homebrew)
+
+The release pipeline automatically updates `Formula/onessh.rb`.
+
+```bash
+brew tap tiangong-dev/onessh https://github.com/tiangong-dev/onessh
+brew install tiangong-dev/onessh/onessh
+```
+
+Upgrade:
+
+```bash
+brew update
+brew upgrade onessh
+```
+
+## Configuration
+
+Default path:
+
+```text
+~/.onessh/config
+```
+
+Override options:
+
+- Environment variable: `ONESSH_CONFIG`
+- CLI flag: `--config /path/to/config`
+- CLI flag: `--cache-ttl 10m` (default: 10 minutes)
+- CLI flag: `--no-cache` to disable cache
+- Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
+
+Store layout (sharded + SOPS-like encrypted values):
+
+```text
+~/.onessh/config/
+  meta.yaml
+  users/
+    <alias>.yaml
+  hosts/
+    <alias>.yaml
+```
+
+Sensitive field values are stored as `ENC[...]` while the file structure remains diff-friendly.
+
+Example files:
+
+```yaml
+# ~/.onessh/config/users/ops.yaml
+version: 1
+name: ENC[v1,...]
+auth:
+  type: key
+  key_path: ENC[v1,...]
+```
+
+```yaml
+# ~/.onessh/config/hosts/ais.yaml
+version: 1
+host: ENC[v1,...]
+user_ref: ops
+port: 22
+```
+
+## Quick Start
+
+```bash
+./onessh init
+./onessh add web1
+./onessh ls
+./onessh web1
+```
+
+When adding a host, you can:
+
+- create a new user profile by entering a username, or
+- select an existing user profile from the list.
+
+User profile YAML shape:
+
+```yaml
+users:
+  ops:
+    name: ubuntu
+    auth:
+      type: key
+      key_path: ~/.ssh/id_ed25519
+```
+
+Host entries must include `user_ref` and do not keep `auth` / `user` fields at host level.
+
+Non-interactive host update examples:
+
+```bash
+onessh update ais --alias pi
+onessh update ais --host 10.0.0.12 --port 2222
+onessh update ais --user-ref ops
+onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
+```
+
+## Security Notes
+
+- Encryption: Argon2id + AES-256-GCM
+- Only encrypted data is stored on disk (Git-friendly)
+- Master password and plaintext only exist in memory at runtime
+
+## Automated Release (GitHub Actions)
+
+This repository includes a `release` workflow:
+
+- Trigger: push tag `v*` (for example `v0.2.0`)
+- Actions:
+  - Build multi-platform binaries (Linux/macOS/Windows, amd64/arm64)
+  - Create GitHub Release and checksums automatically
+  - Update Homebrew formula (`Formula/onessh.rb`) automatically
+
+Release example:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Before first release, ensure repository setting `Actions > Workflow permissions` is set to **Read and write permissions** so formula updates can be pushed.
