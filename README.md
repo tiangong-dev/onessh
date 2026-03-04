@@ -10,7 +10,7 @@ OneSSH is a Go-based SSH host manager that encrypts the entire configuration wit
 - `onessh add <alias>` add a host
 - `onessh update <alias>` update a host (interactive or with generic flags)
 - `onessh rm <alias>` remove a host
-- `onessh ls` list host aliases
+- `onessh ls` list hosts with user/auth/port summary
 - `onessh user ls` list reusable users
 - `onessh user add <alias> --name <user>` add a reusable user (with auth)
 - `onessh user update <alias>` update reusable user auth/profile
@@ -133,7 +133,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 - `onessh add <alias>` 添加主机
 - `onessh update <alias>` 更新主机（可交互修改，也可通过通用参数修改）
 - `onessh rm <alias>` 删除主机
-- `onessh ls` 列出主机别名
+- `onessh ls` 列出主机详情（含 user/auth/port 摘要）
 - `onessh user ls` 列出可复用 user
 - `onessh user add <alias> --name <user>` 新增可复用 user（含认证信息）
 - `onessh user update <alias>` 更新可复用 user 的认证/配置

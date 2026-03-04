@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"onessh/internal/store"
@@ -334,7 +335,7 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 func newLsCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ls",
-		Short: "List all host aliases",
+		Short: "List hosts with summary information",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
@@ -354,9 +355,37 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 			}
 			sort.Strings(aliases)
 
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "ALIAS\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tSTATUS")
 			for _, alias := range aliases {
-				fmt.Fprintln(cmd.OutOrStdout(), alias)
+				host := cfg.Hosts[alias]
+				userName, authType, status := summarizeHostIdentityForList(cfg, host)
+				port := host.Port
+				if port <= 0 {
+					port = 22
+				}
+				proxyJump := strings.TrimSpace(host.ProxyJump)
+				if proxyJump == "" {
+					proxyJump = "-"
+				}
+				userRef := strings.TrimSpace(host.UserRef)
+				if userRef == "" {
+					userRef = "-"
+				}
+				fmt.Fprintf(
+					w,
+					"%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+					alias,
+					host.Host,
+					userName,
+					userRef,
+					authType,
+					port,
+					proxyJump,
+					status,
+				)
 			}
+			_ = w.Flush()
 
 			return nil
 		},
@@ -853,6 +882,33 @@ func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, 
 		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has empty password", host.UserRef)
 	}
 	return strings.TrimSpace(userCfg.Name), userCfg.Auth, nil
+}
+
+func summarizeHostIdentityForList(cfg store.PlainConfig, host store.HostConfig) (string, string, string) {
+	userRef := strings.TrimSpace(host.UserRef)
+	if userRef == "" {
+		return "-", "-", "missing_user_ref"
+	}
+
+	userCfg, ok := cfg.Users[userRef]
+	if !ok {
+		return "-", "-", "missing_user_profile"
+	}
+
+	userName := strings.TrimSpace(userCfg.Name)
+	if userName == "" {
+		userName = "-"
+	}
+
+	authType := normalizeAuthType(userCfg.Auth.Type)
+	if authType == "" {
+		return userName, "-", "missing_auth"
+	}
+	if authType == "password" && strings.TrimSpace(userCfg.Auth.Password) == "" {
+		return userName, authType, "empty_password"
+	}
+
+	return userName, authType, "ok"
 }
 
 func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
