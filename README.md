@@ -74,8 +74,8 @@ Memory backend behavior:
 
 Password auth note:
 
-- Password-based SSH auth requires `sshpass` installed.
-- Password is passed via IPC file descriptor (`sshpass -d`), not environment variables.
+- Password auth first tries `sshpass -d` (FD-based, no secret env var).
+- If `sshpass` is unavailable, it falls back to `SSH_ASKPASS` + onessh agent IPC token (short-lived).
 
 Store layout (sharded + SOPS-like encrypted values):
 
@@ -181,6 +181,7 @@ onessh sshconfig import --overwrite
 - Encryption: Argon2id + AES-256-GCM
 - Only encrypted data is stored on disk (Git-friendly)
 - Master password and plaintext only exist in memory at runtime
+- Detailed design and flowcharts: [`docs/security.md`](docs/security.md)
 
 ## Automated Release (GitHub Actions)
 

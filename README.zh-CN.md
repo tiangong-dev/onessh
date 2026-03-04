@@ -74,8 +74,8 @@ memory 后端行为：
 
 密码认证说明：
 
-- 密码方式连接依赖本机安装 `sshpass`。
-- 密码通过 IPC 文件描述符（`sshpass -d`）传递，不通过环境变量传递。
+- 密码认证优先使用 `sshpass -d`（基于 FD 传递，不通过环境变量传明文）。
+- 若本机无 `sshpass`，会回退到 `SSH_ASKPASS` + onessh agent IPC token（短时有效）。
 
 存储结构（分片 + SOPS 风格值加密）：
 
@@ -181,6 +181,7 @@ onessh sshconfig import --overwrite
 - 加密方案：Argon2id + AES-256-GCM
 - 磁盘仅保存密文，适合进入 Git 管理
 - 主密码与明文仅在运行时内存中存在
+- 详细机制与流程图见：[`docs/security.md`](docs/security.md)
 
 ## 自动发布（GitHub Actions）
 

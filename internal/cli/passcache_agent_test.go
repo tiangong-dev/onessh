@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -136,5 +137,37 @@ func TestPassphraseAgentClientExpiration(t *testing.T) {
 	}
 	if ok || len(got) != 0 {
 		t.Fatalf("expected cache to expire")
+	}
+}
+
+func TestAskPassTokenLifecycle(t *testing.T) {
+	t.Parallel()
+
+	socketPath := startTestPassphraseAgent(t)
+	token, cleanup, err := registerAskPassToken(socketPath, "ssh-secret", 2*time.Second, 2)
+	if err != nil {
+		t.Fatalf("registerAskPassToken: %v", err)
+	}
+	defer cleanup()
+
+	first, err := resolveAskPassTokenSecret(socketPath, token)
+	if err != nil {
+		t.Fatalf("resolveAskPassTokenSecret first: %v", err)
+	}
+	if first != "ssh-secret" {
+		t.Fatalf("unexpected first secret: %q", first)
+	}
+
+	second, err := resolveAskPassTokenSecret(socketPath, token)
+	if err != nil {
+		t.Fatalf("resolveAskPassTokenSecret second: %v", err)
+	}
+	if second != "ssh-secret" {
+		t.Fatalf("unexpected second secret: %q", second)
+	}
+
+	_, err = resolveAskPassTokenSecret(socketPath, token)
+	if err == nil || !strings.Contains(err.Error(), "not found or expired") {
+		t.Fatalf("expected token exhaustion error, got %v", err)
 	}
 }

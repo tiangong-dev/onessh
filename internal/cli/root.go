@@ -68,6 +68,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newConnectCmd(opts),
 		newSSHConfigCmd(opts),
 		newAgentCmd(opts),
+		newAskPassCmd(opts),
 		newUserCmd(opts),
 		newLogoutCmd(opts),
 		newVersionCmd(version, commit, date),
@@ -869,10 +870,17 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
-	return executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr())
+	return executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket)
 }
 
-func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, sshArgs []string, errOut io.Writer) error {
+func executeSSH(
+	host store.HostConfig,
+	userName string,
+	auth store.AuthConfig,
+	sshArgs []string,
+	errOut io.Writer,
+	agentSocket string,
+) error {
 	args := make([]string, 0, 10+len(sshArgs))
 	extraFiles := []*os.File{}
 	cleanupExtraFiles := []func(){}
@@ -927,19 +935,25 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	binary := "ssh"
 	env := mergeCommandEnv(os.Environ(), host.Env)
 	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err != nil {
-			fmt.Fprintln(errOut, "sshpass not found, password auth requires sshpass.")
-			return errors.New("password auth requires sshpass installed")
+		if _, err := exec.LookPath("sshpass"); err == nil {
+			passwordFD, cleanup, err := newPasswordFD(auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			extraFiles = append(extraFiles, passwordFD)
+			cleanupExtraFiles = append(cleanupExtraFiles, func() { _ = passwordFD.Close() })
+			binary = "sshpass"
+			args = append([]string{"-d", "3", "ssh"}, args...)
+		} else {
+			fmt.Fprintln(errOut, "sshpass not found, using SSH_ASKPASS via agent IPC fallback.")
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			env = append(env, askPassEnv...)
 		}
-		passwordFD, cleanup, err := newPasswordFD(auth.Password)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		extraFiles = append(extraFiles, passwordFD)
-		cleanupExtraFiles = append(cleanupExtraFiles, func() { _ = passwordFD.Close() })
-		binary = "sshpass"
-		args = append([]string{"-d", "3", "ssh"}, args...)
 	}
 
 	defer func() {
@@ -1005,6 +1019,66 @@ func newPasswordFD(password string) (*os.File, func(), error) {
 		_ = reader.Close()
 	}
 	return reader, cleanup, nil
+}
+
+func prepareAskPassEnv(agentSocket, password string) ([]string, func(), error) {
+	if strings.TrimSpace(password) == "" {
+		return nil, nil, errors.New("password auth requires non-empty password")
+	}
+
+	socketPath, err := resolveAgentSocketPath(agentSocket)
+	if err != nil {
+		return nil, nil, err
+	}
+	token, clearToken, err := registerAskPassToken(socketPath, password, defaultAskPassTTL, defaultAskPassMaxUses)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		clearToken()
+		return nil, nil, fmt.Errorf("resolve executable path: %w", err)
+	}
+
+	scriptFile, err := os.CreateTemp("", "onessh-askpass-*.sh")
+	if err != nil {
+		clearToken()
+		return nil, nil, fmt.Errorf("create askpass launcher: %w", err)
+	}
+	scriptPath := scriptFile.Name()
+
+	launcher := "#!/bin/sh\nexec \"$ONESSH_ASKPASS_EXE\" askpass --socket \"$ONESSH_ASKPASS_SOCKET\" --token \"$ONESSH_ASKPASS_TOKEN\"\n"
+	if _, err := scriptFile.WriteString(launcher); err != nil {
+		_ = scriptFile.Close()
+		_ = os.Remove(scriptPath)
+		clearToken()
+		return nil, nil, fmt.Errorf("write askpass launcher: %w", err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		_ = os.Remove(scriptPath)
+		clearToken()
+		return nil, nil, fmt.Errorf("close askpass launcher: %w", err)
+	}
+	if err := os.Chmod(scriptPath, 0o700); err != nil {
+		_ = os.Remove(scriptPath)
+		clearToken()
+		return nil, nil, fmt.Errorf("chmod askpass launcher: %w", err)
+	}
+
+	env := []string{
+		"SSH_ASKPASS=" + scriptPath,
+		"SSH_ASKPASS_REQUIRE=force",
+		"DISPLAY=onessh:0",
+		"ONESSH_ASKPASS_EXE=" + exePath,
+		"ONESSH_ASKPASS_SOCKET=" + socketPath,
+		"ONESSH_ASKPASS_TOKEN=" + token,
+	}
+	cleanup := func() {
+		clearToken()
+		_ = os.Remove(scriptPath)
+	}
+	return env, cleanup, nil
 }
 
 func shellSingleQuote(value string) string {

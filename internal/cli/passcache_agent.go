@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +32,16 @@ const (
 	agentActionSet   = "set"
 	agentActionClear = "clear"
 	agentActionStop  = "stop"
+
+	agentActionSetAskPass   = "set_askpass"
+	agentActionGetAskPass   = "get_askpass"
+	agentActionClearAskPass = "clear_askpass"
+)
+
+const (
+	defaultAskPassTTL     = 2 * time.Minute
+	defaultAskPassMaxUses = 8
+	askPassTokenBytes     = 24
 )
 
 type passphraseAgentClient struct {
@@ -43,6 +55,8 @@ type passphraseAgentRequest struct {
 	ConfigPath string `json:"config_path,omitempty"`
 	SecretB64  string `json:"secret_b64,omitempty"`
 	ExpiresAt  int64  `json:"expires_at,omitempty"`
+	Token      string `json:"token,omitempty"`
+	MaxUses    int    `json:"max_uses,omitempty"`
 }
 
 type passphraseAgentResponse struct {
@@ -53,13 +67,20 @@ type passphraseAgentResponse struct {
 }
 
 type passphraseAgentState struct {
-	mu      sync.Mutex
-	entries map[string]agentEntry
+	mu             sync.Mutex
+	entries        map[string]agentEntry
+	askpassEntries map[string]askpassEntry
 }
 
 type agentEntry struct {
 	secret    []byte
 	expiresAt int64
+}
+
+type askpassEntry struct {
+	secret    []byte
+	expiresAt int64
+	remaining int
 }
 
 func newPassphraseAgentClient(
@@ -171,6 +192,73 @@ func (c passphraseAgentClient) request(req passphraseAgentRequest) (passphraseAg
 	return resp, nil
 }
 
+func registerAskPassToken(socketPath, password string, ttl time.Duration, maxUses int) (string, func(), error) {
+	if strings.TrimSpace(password) == "" {
+		return "", nil, errors.New("password auth requires non-empty password")
+	}
+	if ttl <= 0 {
+		ttl = defaultAskPassTTL
+	}
+	if maxUses <= 0 {
+		maxUses = defaultAskPassMaxUses
+	}
+
+	if err := startPassphraseAgentProcess(socketPath); err != nil {
+		return "", nil, err
+	}
+
+	token, err := newAskPassToken()
+	if err != nil {
+		return "", nil, err
+	}
+	client := passphraseAgentClient{socketPath: socketPath}
+	_, err = client.request(passphraseAgentRequest{
+		Action:    agentActionSetAskPass,
+		Token:     token,
+		SecretB64: base64.StdEncoding.EncodeToString([]byte(password)),
+		ExpiresAt: time.Now().Add(ttl).Unix(),
+		MaxUses:   maxUses,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	cleanup := func() {
+		_, _ = client.request(passphraseAgentRequest{
+			Action: agentActionClearAskPass,
+			Token:  token,
+		})
+	}
+	return token, cleanup, nil
+}
+
+func resolveAskPassTokenSecret(socketPath, token string) (string, error) {
+	client := passphraseAgentClient{socketPath: socketPath}
+	resp, err := client.request(passphraseAgentRequest{
+		Action: agentActionGetAskPass,
+		Token:  token,
+	})
+	if err != nil {
+		return "", err
+	}
+	if !resp.Found {
+		return "", errors.New("askpass token not found or expired")
+	}
+	secret, err := base64.StdEncoding.DecodeString(resp.SecretB64)
+	if err != nil || len(secret) == 0 {
+		return "", errors.New("invalid askpass secret payload")
+	}
+	return string(secret), nil
+}
+
+func newAskPassToken() (string, error) {
+	buf := make([]byte, askPassTokenBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate askpass token: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func resolveAgentSocketPath(custom string) (string, error) {
 	if strings.TrimSpace(custom) != "" {
 		return expandTilde(custom)
@@ -263,7 +351,8 @@ func servePassphraseAgent(socketPath string, errOut io.Writer) error {
 	}
 
 	state := &passphraseAgentState{
-		entries: map[string]agentEntry{},
+		entries:        map[string]agentEntry{},
+		askpassEntries: map[string]askpassEntry{},
 	}
 
 	stopCh := make(chan struct{})
@@ -358,6 +447,12 @@ func (s *passphraseAgentState) apply(req passphraseAgentRequest) passphraseAgent
 		return s.handleSet(req)
 	case agentActionClear:
 		return s.handleClear(req)
+	case agentActionSetAskPass:
+		return s.handleSetAskPass(req)
+	case agentActionGetAskPass:
+		return s.handleGetAskPass(req)
+	case agentActionClearAskPass:
+		return s.handleClearAskPass(req)
 	case agentActionStop:
 		s.clearAll()
 		return passphraseAgentResponse{OK: true}
@@ -442,8 +537,96 @@ func (s *passphraseAgentState) handleClear(req passphraseAgentRequest) passphras
 	return passphraseAgentResponse{OK: true}
 }
 
+func (s *passphraseAgentState) handleSetAskPass(req passphraseAgentRequest) passphraseAgentResponse {
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		return passphraseAgentResponse{OK: false, Error: "token is required"}
+	}
+	if req.ExpiresAt <= time.Now().Unix() {
+		return passphraseAgentResponse{OK: false, Error: "expires_at must be in the future"}
+	}
+	if req.MaxUses <= 0 {
+		return passphraseAgentResponse{OK: false, Error: "max_uses must be positive"}
+	}
+
+	secret, err := base64.StdEncoding.DecodeString(req.SecretB64)
+	if err != nil || len(secret) == 0 {
+		return passphraseAgentResponse{OK: false, Error: "invalid secret_b64"}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if old, ok := s.askpassEntries[token]; ok {
+		wipe(old.secret)
+	}
+	s.askpassEntries[token] = askpassEntry{
+		secret:    secret,
+		expiresAt: req.ExpiresAt,
+		remaining: req.MaxUses,
+	}
+	return passphraseAgentResponse{OK: true}
+}
+
+func (s *passphraseAgentState) handleGetAskPass(req passphraseAgentRequest) passphraseAgentResponse {
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		return passphraseAgentResponse{OK: false, Error: "token is required"}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.askpassEntries[token]
+	if !ok {
+		return passphraseAgentResponse{OK: true, Found: false}
+	}
+	if entry.expiresAt <= time.Now().Unix() || entry.remaining <= 0 {
+		wipe(entry.secret)
+		delete(s.askpassEntries, token)
+		return passphraseAgentResponse{OK: true, Found: false}
+	}
+
+	secretCopy := append([]byte(nil), entry.secret...)
+	entry.remaining--
+	if entry.remaining <= 0 {
+		wipe(entry.secret)
+		delete(s.askpassEntries, token)
+	} else {
+		s.askpassEntries[token] = entry
+	}
+
+	return passphraseAgentResponse{
+		OK:        true,
+		Found:     true,
+		SecretB64: base64.StdEncoding.EncodeToString(secretCopy),
+	}
+}
+
+func (s *passphraseAgentState) handleClearAskPass(req passphraseAgentRequest) passphraseAgentResponse {
+	token := strings.TrimSpace(req.Token)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if token == "" {
+		for key, entry := range s.askpassEntries {
+			wipe(entry.secret)
+			delete(s.askpassEntries, key)
+		}
+		return passphraseAgentResponse{OK: true}
+	}
+
+	if entry, ok := s.askpassEntries[token]; ok {
+		wipe(entry.secret)
+		delete(s.askpassEntries, token)
+	}
+	return passphraseAgentResponse{OK: true}
+}
+
 func (s *passphraseAgentState) clearAll() {
 	_ = s.handleClear(passphraseAgentRequest{})
+	_ = s.handleClearAskPass(passphraseAgentRequest{})
 }
 
 func newAgentCmd(opts *rootOptions) *cobra.Command {
@@ -549,6 +732,53 @@ func newAgentStatusCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
+	return cmd
+}
+
+func newAskPassCmd(opts *rootOptions) *cobra.Command {
+	var (
+		socket string
+		token  string
+	)
+
+	cmd := &cobra.Command{
+		Use:    "askpass",
+		Short:  "Internal askpass helper (do not call directly)",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			socketValue := strings.TrimSpace(socket)
+			if socketValue == "" {
+				socketValue = strings.TrimSpace(os.Getenv("ONESSH_ASKPASS_SOCKET"))
+			}
+			if socketValue == "" {
+				socketValue = resolveSocketFlag("", opts)
+			}
+			socketPath, err := resolveAgentSocketPath(socketValue)
+			if err != nil {
+				return err
+			}
+
+			tokenValue := strings.TrimSpace(token)
+			if tokenValue == "" {
+				tokenValue = strings.TrimSpace(os.Getenv("ONESSH_ASKPASS_TOKEN"))
+			}
+			if tokenValue == "" {
+				return errors.New("missing askpass token")
+			}
+
+			secret, err := resolveAskPassTokenSecret(socketPath, tokenValue)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), secret)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
+	cmd.Flags().StringVar(&token, "token", "", "Askpass token")
+	_ = cmd.Flags().MarkHidden("socket")
+	_ = cmd.Flags().MarkHidden("token")
 	return cmd
 }
 
