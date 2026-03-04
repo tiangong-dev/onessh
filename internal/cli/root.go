@@ -549,17 +549,17 @@ func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
 
 func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 	for {
-		raw, err := promptOptional(reader, "Auth type (key/password)", defaultType)
+		raw, err := promptOptional(reader, "Auth type (key/password or 1/2)", defaultType)
 		if err != nil {
 			return "", err
 		}
 		switch strings.ToLower(strings.TrimSpace(raw)) {
-		case "key":
+		case "1", "k", "key":
 			return "key", nil
-		case "password":
+		case "2", "p", "pass", "password":
 			return "password", nil
 		default:
-			fmt.Fprintln(os.Stderr, "Auth type must be key or password.")
+			fmt.Fprintln(os.Stderr, "Auth type must be key/password or 1/2.")
 		}
 	}
 }
