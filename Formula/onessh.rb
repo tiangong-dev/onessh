@@ -5,21 +5,21 @@
 class Onessh < Formula
   desc "Encrypted SSH host manager with one master password"
   homepage "https://github.com/tiangong-dev/onessh"
-  version "0.0.0-test.20260304040024"
+  version "0.1.0"
   license "Unlicense"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/tiangong-dev/onessh/releases/download/v0.0.0-test.20260304040024/onessh_0.0.0-test.20260304040024_darwin_amd64.tar.gz"
-      sha256 "6da008c13c861d5919750ff0a2badcb5762972a45b8d06e90580a396b1f436cb"
+      url "https://github.com/tiangong-dev/onessh/releases/download/v0.1.0/onessh_0.1.0_darwin_amd64.tar.gz"
+      sha256 "8da965db35a2213c34fb32dad26c5278513e8652434afb8acc710ba9f8b30249"
 
       define_method(:install) do
         bin.install "onessh"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/tiangong-dev/onessh/releases/download/v0.0.0-test.20260304040024/onessh_0.0.0-test.20260304040024_darwin_arm64.tar.gz"
-      sha256 "fc56417a140a38d00bba28761792517e79702acc624ad2564cb9f4637897733d"
+      url "https://github.com/tiangong-dev/onessh/releases/download/v0.1.0/onessh_0.1.0_darwin_arm64.tar.gz"
+      sha256 "41b983ab476ab340c847435b6c545e3264eba613a1eb0db6f4b3665ec4c2bfe4"
 
       define_method(:install) do
         bin.install "onessh"
@@ -29,15 +29,15 @@ class Onessh < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/tiangong-dev/onessh/releases/download/v0.0.0-test.20260304040024/onessh_0.0.0-test.20260304040024_linux_amd64.tar.gz"
-      sha256 "ffb3cd59f95d3fc8b982242211c27d01aa0cab365d55b4a71f68b2aacdc07c3c"
+      url "https://github.com/tiangong-dev/onessh/releases/download/v0.1.0/onessh_0.1.0_linux_amd64.tar.gz"
+      sha256 "67a7c420b1f3c72ac672e476ce6b7d6cce397ef9c86b64267ddceac6682ad5e5"
       define_method(:install) do
         bin.install "onessh"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/tiangong-dev/onessh/releases/download/v0.0.0-test.20260304040024/onessh_0.0.0-test.20260304040024_linux_arm64.tar.gz"
-      sha256 "ebc49071b85de2fa0bae7ece8c9c580612f875d72b74eabca31794f412aedb8e"
+      url "https://github.com/tiangong-dev/onessh/releases/download/v0.1.0/onessh_0.1.0_linux_arm64.tar.gz"
+      sha256 "243e00aecc4e6aab081b083b4356a9d60e36d8b738686e7381f7277eec394d3d"
       define_method(:install) do
         bin.install "onessh"
       end
