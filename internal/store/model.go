@@ -12,6 +12,8 @@ type HostConfig struct {
 	Port      int               `yaml:"port"`
 	ProxyJump string            `yaml:"proxy_jump,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
+	PreConnect  []string        `yaml:"pre_connect,omitempty"`
+	PostConnect []string        `yaml:"post_connect,omitempty"`
 }
 
 type UserConfig struct {

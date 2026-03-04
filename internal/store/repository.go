@@ -57,6 +57,8 @@ type hostDoc struct {
 	Port      int               `yaml:"port"`
 	ProxyJump string            `yaml:"proxy_jump,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
+	PreConnect  []string        `yaml:"pre_connect,omitempty"`
+	PostConnect []string        `yaml:"post_connect,omitempty"`
 }
 
 func ResolvePath(customPath string) (string, error) {
@@ -351,6 +353,8 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 			Port:      doc.Port,
 			ProxyJump: strings.TrimSpace(doc.ProxyJump),
 			Env:       map[string]string{},
+			PreConnect:  make([]string, 0, len(doc.PreConnect)),
+			PostConnect: make([]string, 0, len(doc.PostConnect)),
 		}
 		if hostCfg.Port <= 0 {
 			hostCfg.Port = 22
@@ -364,6 +368,34 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 		}
 		if len(hostCfg.Env) == 0 {
 			hostCfg.Env = nil
+		}
+		for i, encCmd := range doc.PreConnect {
+			plainCmd, err := decryptStringField(encCmd, key)
+			if err != nil {
+				return fmt.Errorf("decrypt pre_connect for host %s index %d: %w", alias, i, err)
+			}
+			plainCmd = strings.TrimSpace(plainCmd)
+			if plainCmd == "" {
+				return fmt.Errorf("host %s has empty pre_connect command at index %d", alias, i)
+			}
+			hostCfg.PreConnect = append(hostCfg.PreConnect, plainCmd)
+		}
+		if len(hostCfg.PreConnect) == 0 {
+			hostCfg.PreConnect = nil
+		}
+		for i, encCmd := range doc.PostConnect {
+			plainCmd, err := decryptStringField(encCmd, key)
+			if err != nil {
+				return fmt.Errorf("decrypt post_connect for host %s index %d: %w", alias, i, err)
+			}
+			plainCmd = strings.TrimSpace(plainCmd)
+			if plainCmd == "" {
+				return fmt.Errorf("host %s has empty post_connect command at index %d", alias, i)
+			}
+			hostCfg.PostConnect = append(hostCfg.PostConnect, plainCmd)
+		}
+		if len(hostCfg.PostConnect) == 0 {
+			hostCfg.PostConnect = nil
 		}
 
 		cfg.Hosts[alias] = hostCfg
@@ -466,6 +498,8 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 			Port:      hostCfg.Port,
 			ProxyJump: strings.TrimSpace(hostCfg.ProxyJump),
 			Env:       map[string]string{},
+			PreConnect:  make([]string, 0, len(hostCfg.PreConnect)),
+			PostConnect: make([]string, 0, len(hostCfg.PostConnect)),
 		}
 		if doc.Port <= 0 {
 			doc.Port = 22
@@ -486,6 +520,34 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 		}
 		if len(doc.Env) == 0 {
 			doc.Env = nil
+		}
+		for i, command := range hostCfg.PreConnect {
+			trimmed := strings.TrimSpace(command)
+			if trimmed == "" {
+				return fmt.Errorf("host %q pre_connect command at index %d is empty", alias, i)
+			}
+			encCmd, err := encryptStringField(trimmed, key)
+			if err != nil {
+				return fmt.Errorf("encrypt pre_connect for host %s index %d: %w", alias, i, err)
+			}
+			doc.PreConnect = append(doc.PreConnect, encCmd)
+		}
+		if len(doc.PreConnect) == 0 {
+			doc.PreConnect = nil
+		}
+		for i, command := range hostCfg.PostConnect {
+			trimmed := strings.TrimSpace(command)
+			if trimmed == "" {
+				return fmt.Errorf("host %q post_connect command at index %d is empty", alias, i)
+			}
+			encCmd, err := encryptStringField(trimmed, key)
+			if err != nil {
+				return fmt.Errorf("encrypt post_connect for host %s index %d: %w", alias, i, err)
+			}
+			doc.PostConnect = append(doc.PostConnect, encCmd)
+		}
+		if len(doc.PostConnect) == 0 {
+			doc.PostConnect = nil
 		}
 
 		if err := writeYAMLAtomic(filepath.Join(r.hostsDir(), alias+".yaml"), doc); err != nil {

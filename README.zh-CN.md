@@ -22,6 +22,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - Host 通过 `user_ref` 关联独立 user profile
 - 认证信息在 user profile 层维护
 - 支持 Host 级 `env`（注入本地 SSH 进程，并通过 `SendEnv` 转发）
+- 支持 `pre_connect` / `post_connect`（按 Host 预设远端连接前后指令）
 - 主密码默认缓存 10 分钟，期间无需重复输入
 
 ## 构建
@@ -95,6 +96,10 @@ port: 22
 env:
   AWS_PROFILE: ENC[v1,...]
   HTTPS_PROXY: ENC[v1,...]
+pre_connect:
+  - ENC[v1,...]
+post_connect:
+  - ENC[v1,...]
 ```
 
 ## 快速开始
@@ -135,7 +140,15 @@ onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
 onessh update ais --env AWS_PROFILE=prod --env HTTPS_PROXY=http://127.0.0.1:7890
 onessh update ais --unset-env HTTPS_PROXY
 onessh update ais --clear-env
+onessh update ais --pre-connect "cd /srv/app" --pre-connect "source .envrc"
+onessh update ais --post-connect "echo disconnected"
+onessh update ais --clear-pre-connect --clear-post-connect
 ```
+
+Hook 行为说明：
+
+- `pre_connect` 先执行，再进入交互式 shell，shell 退出后再执行 `post_connect`。
+- 如果你想直接切换到 root shell，可使用 `--pre-connect "exec sudo su -"`.
 
 ## 安全说明
 

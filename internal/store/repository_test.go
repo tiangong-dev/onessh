@@ -24,9 +24,12 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 		},
 	}
 	source.Hosts["web1"] = HostConfig{
-		Host:    "1.2.3.4",
-		UserRef: "ops",
-		Port:    22,
+		Host:        "1.2.3.4",
+		UserRef:     "ops",
+		Port:        22,
+		Env:         map[string]string{"AWS_PROFILE": "prod"},
+		PreConnect:  []string{"cd /srv/app"},
+		PostConnect: []string{"echo disconnected"},
 	}
 
 	if err := repo.Save(source, pass); err != nil {

@@ -22,6 +22,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - Hosts reference user profiles via `user_ref`
 - Auth is maintained at profile level
 - Host-level `env` is applied to local SSH process and forwarded with `SendEnv`
+- `pre_connect` / `post_connect` hooks for per-host remote bootstrap/cleanup commands
 - Master password cache: no re-prompt within 10 minutes by default
 
 ## Build
@@ -95,6 +96,10 @@ port: 22
 env:
   AWS_PROFILE: ENC[v1,...]
   HTTPS_PROXY: ENC[v1,...]
+pre_connect:
+  - ENC[v1,...]
+post_connect:
+  - ENC[v1,...]
 ```
 
 ## Quick Start
@@ -135,7 +140,15 @@ onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
 onessh update ais --env AWS_PROFILE=prod --env HTTPS_PROXY=http://127.0.0.1:7890
 onessh update ais --unset-env HTTPS_PROXY
 onessh update ais --clear-env
+onessh update ais --pre-connect "cd /srv/app" --pre-connect "source .envrc"
+onessh update ais --post-connect "echo disconnected"
+onessh update ais --clear-pre-connect --clear-post-connect
 ```
+
+Hook behavior notes:
+
+- `pre_connect` runs first, then an interactive shell starts, then `post_connect` runs after the shell exits.
+- To jump directly into root shell, use `--pre-connect "exec sudo su -"`.
 
 ## Security Notes
 

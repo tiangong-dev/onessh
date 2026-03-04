@@ -125,7 +125,11 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newAddCmd(opts *rootOptions) *cobra.Command {
-	var envFlags []string
+	var (
+		envFlags      []string
+		preConnect    []string
+		postConnect   []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "add <host-alias>",
@@ -163,6 +167,20 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 				}
 				newHost.Env = envMap
 			}
+			if cmd.Flags().Changed("pre-connect") {
+				cmds, err := parseHookCommands(preConnect, "pre-connect")
+				if err != nil {
+					return err
+				}
+				newHost.PreConnect = cmds
+			}
+			if cmd.Flags().Changed("post-connect") {
+				cmds, err := parseHookCommands(postConnect, "post-connect")
+				if err != nil {
+					return err
+				}
+				newHost.PostConnect = cmds
+			}
 			cfg.Hosts[alias] = newHost
 
 			if err := repo.Save(cfg, pass); err != nil {
@@ -174,6 +192,8 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Host environment variable (KEY=VALUE), repeatable")
+	cmd.Flags().StringArrayVar(&preConnect, "pre-connect", nil, "Remote command run before interactive shell, repeatable")
+	cmd.Flags().StringArrayVar(&postConnect, "post-connect", nil, "Remote command run after interactive shell exits, repeatable")
 	return cmd
 }
 
@@ -191,6 +211,10 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 		envFlags     []string
 		unsetEnv     []string
 		clearEnv     bool
+		preConnect   []string
+		postConnect  []string
+		clearPre     bool
+		clearPost    bool
 	)
 
 	cmd := &cobra.Command{
@@ -245,6 +269,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 					updatedHost.ProxyJump = strings.TrimSpace(proxyJump)
 				}
 				if err := applyHostEnvUpdateFlags(cmd, &updatedHost, envFlags, unsetEnv, clearEnv); err != nil {
+					return err
+				}
+				if err := applyHostHookUpdateFlags(cmd, &updatedHost, preConnect, postConnect, clearPre, clearPost); err != nil {
 					return err
 				}
 
@@ -317,6 +344,10 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Set host env entry (KEY=VALUE), repeatable")
 	cmd.Flags().StringArrayVar(&unsetEnv, "unset-env", nil, "Remove host env entry by key, repeatable")
 	cmd.Flags().BoolVar(&clearEnv, "clear-env", false, "Remove all host env entries")
+	cmd.Flags().StringArrayVar(&preConnect, "pre-connect", nil, "Set pre-connect remote command, repeatable")
+	cmd.Flags().StringArrayVar(&postConnect, "post-connect", nil, "Set post-connect remote command, repeatable")
+	cmd.Flags().BoolVar(&clearPre, "clear-pre-connect", false, "Remove all pre-connect commands")
+	cmd.Flags().BoolVar(&clearPost, "clear-post-connect", false, "Remove all post-connect commands")
 	return cmd
 }
 
@@ -855,8 +886,23 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	if userName != "" {
 		destination = fmt.Sprintf("%s@%s", userName, host.Host)
 	}
+
+	hookCommand := buildRemoteHookCommand(host.PreConnect, host.PostConnect)
+	if hookCommand != "" {
+		if containsShortFlag(sshArgs, 'N') {
+			return errors.New("pre/post-connect commands are incompatible with -N")
+		}
+		if containsShortFlag(sshArgs, 'T') {
+			return errors.New("pre/post-connect commands are incompatible with -T")
+		}
+		args = append(args, "-tt")
+	}
+
 	args = append(args, sshArgs...)
 	args = append(args, destination)
+	if hookCommand != "" {
+		args = append(args, hookCommand)
+	}
 
 	binary := "ssh"
 	env := mergeCommandEnv(os.Environ(), host.Env)
@@ -877,6 +923,25 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	execCmd.Stderr = os.Stderr
 	execCmd.Env = env
 	return execCmd.Run()
+}
+
+func buildRemoteHookCommand(preConnect, postConnect []string) string {
+	preparedPre := sanitizeHookCommands(preConnect)
+	preparedPost := sanitizeHookCommands(postConnect)
+	if len(preparedPre) == 0 && len(preparedPost) == 0 {
+		return ""
+	}
+
+	lines := make([]string, 0, len(preparedPre)+len(preparedPost)+5)
+	lines = append(lines, "set -e")
+	lines = append(lines, preparedPre...)
+	lines = append(lines, "${SHELL:-/bin/sh} -i")
+	lines = append(lines, "onessh_status=$?")
+	lines = append(lines, preparedPost...)
+	lines = append(lines, "exit $onessh_status")
+
+	script := strings.Join(lines, "\n")
+	return "sh -lc " + shellSingleQuote(script)
 }
 
 func executeSSHWithAskPass(args []string, env []string, password string) error {
@@ -916,6 +981,22 @@ func executeSSHWithAskPass(args []string, env []string, password string) error {
 	execCmd.Stderr = os.Stderr
 	execCmd.Env = askPassEnv
 	return execCmd.Run()
+}
+
+func shellSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func containsShortFlag(args []string, flag rune) bool {
+	for _, arg := range args {
+		if len(arg) < 2 || arg[0] != '-' || strings.HasPrefix(arg, "--") {
+			continue
+		}
+		if strings.ContainsRune(arg[1:], flag) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
@@ -978,6 +1059,10 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 		"env",
 		"unset-env",
 		"clear-env",
+		"pre-connect",
+		"post-connect",
+		"clear-pre-connect",
+		"clear-post-connect",
 		"user-ref",
 		"user",
 		"auth-type",
@@ -1035,6 +1120,49 @@ func applyHostEnvUpdateFlags(
 		return nil
 	}
 	host.Env = current
+	return nil
+}
+
+func applyHostHookUpdateFlags(
+	cmd *cobra.Command,
+	host *store.HostConfig,
+	preConnect, postConnect []string,
+	clearPre, clearPost bool,
+) error {
+	changedPre := cmd.Flags().Changed("pre-connect")
+	changedPost := cmd.Flags().Changed("post-connect")
+	changedClearPre := cmd.Flags().Changed("clear-pre-connect") && clearPre
+	changedClearPost := cmd.Flags().Changed("clear-post-connect") && clearPost
+	if !changedPre && !changedPost && !changedClearPre && !changedClearPost {
+		return nil
+	}
+
+	preparedPre := cloneStringSlice(host.PreConnect)
+	preparedPost := cloneStringSlice(host.PostConnect)
+
+	if changedClearPre {
+		preparedPre = nil
+	}
+	if changedClearPost {
+		preparedPost = nil
+	}
+	if changedPre {
+		commands, err := parseHookCommands(preConnect, "pre-connect")
+		if err != nil {
+			return err
+		}
+		preparedPre = commands
+	}
+	if changedPost {
+		commands, err := parseHookCommands(postConnect, "post-connect")
+		if err != nil {
+			return err
+		}
+		preparedPost = commands
+	}
+
+	host.PreConnect = preparedPre
+	host.PostConnect = preparedPost
 	return nil
 }
 
@@ -1220,6 +1348,8 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	defaultPort := 22
 	defaultProxyJump := ""
 	defaultEnv := map[string]string{}
+	defaultPreConnect := []string{}
+	defaultPostConnect := []string{}
 
 	if existing != nil {
 		defaultHost = existing.Host
@@ -1237,6 +1367,8 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		}
 		defaultProxyJump = existing.ProxyJump
 		defaultEnv = existing.Env
+		defaultPreConnect = cloneStringSlice(existing.PreConnect)
+		defaultPostConnect = cloneStringSlice(existing.PostConnect)
 	}
 
 	host, err := promptNonEmpty(inputReader, "Host IP/Domain", defaultHost)
@@ -1272,11 +1404,13 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	}
 
 	return store.HostConfig{
-		Host:      host,
-		UserRef:   userRef,
-		Port:      port,
-		ProxyJump: proxyJump,
-		Env:       defaultEnv,
+		Host:        host,
+		UserRef:     userRef,
+		Port:        port,
+		ProxyJump:   proxyJump,
+		Env:         defaultEnv,
+		PreConnect:  defaultPreConnect,
+		PostConnect: defaultPostConnect,
 	}, nil
 }
 
@@ -1543,6 +1677,21 @@ func parseEnvKeys(values []string) ([]string, error) {
 	return keys, nil
 }
 
+func parseHookCommands(values []string, flagName string) ([]string, error) {
+	commands := make([]string, 0, len(values))
+	for i, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return nil, fmt.Errorf("%s command at index %d is empty", flagName, i)
+		}
+		commands = append(commands, trimmed)
+	}
+	if len(commands) == 0 {
+		return nil, nil
+	}
+	return commands, nil
+}
+
 func appendSendEnvOptions(args []string, envMap map[string]string) []string {
 	if len(envMap) == 0 {
 		return args
@@ -1586,6 +1735,33 @@ func cloneStringMap(input map[string]string) map[string]string {
 	out := make(map[string]string, len(input))
 	for k, v := range input {
 		out[k] = v
+	}
+	return out
+}
+
+func cloneStringSlice(input []string) []string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]string, len(input))
+	copy(out, input)
+	return out
+}
+
+func sanitizeHookCommands(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
