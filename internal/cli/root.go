@@ -333,10 +333,9 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 
 func newLsCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "ls",
-		Aliases: []string{"list"},
-		Short:   "List all host aliases",
-		Args:    cobra.NoArgs,
+		Use:   "ls",
+		Short: "List all host aliases",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
 			if err != nil {
@@ -438,10 +437,9 @@ func newUserCmd(opts *rootOptions) *cobra.Command {
 
 func newUserListCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "ls",
-		Aliases: []string{"list"},
-		Short:   "List user profiles",
-		Args:    cobra.NoArgs,
+		Use:   "ls",
+		Short: "List user profiles",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
 			if err != nil {
@@ -834,31 +832,27 @@ func executeSSHWithAskPass(args []string, env []string, password string) error {
 }
 
 func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
-	if host.UserRef != "" {
-		userCfg, ok := cfg.Users[host.UserRef]
-		if !ok || strings.TrimSpace(userCfg.Name) == "" {
-			return "", store.AuthConfig{}, fmt.Errorf("host references missing user profile: %s", host.UserRef)
-		}
-		if normalized := normalizeAuthType(userCfg.Auth.Type); normalized != "" {
-			userCfg.Auth.Type = normalized
-			return strings.TrimSpace(userCfg.Name), userCfg.Auth, nil
-		}
-		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
-			host.Auth.Type = normalized
-			return strings.TrimSpace(userCfg.Name), host.Auth, nil
-		}
+	if strings.TrimSpace(host.UserRef) == "" {
+		return "", store.AuthConfig{}, errors.New("host has no user_ref configured")
+	}
+
+	userCfg, ok := cfg.Users[host.UserRef]
+	if !ok {
+		return "", store.AuthConfig{}, fmt.Errorf("host references missing user profile: %s", host.UserRef)
+	}
+	if strings.TrimSpace(userCfg.Name) == "" {
+		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has empty name", host.UserRef)
+	}
+
+	normalizedAuthType := normalizeAuthType(userCfg.Auth.Type)
+	if normalizedAuthType == "" {
 		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has no auth configured", host.UserRef)
 	}
-
-	if strings.TrimSpace(host.User) != "" {
-		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
-			host.Auth.Type = normalized
-			return strings.TrimSpace(host.User), host.Auth, nil
-		}
-		return "", store.AuthConfig{}, fmt.Errorf("host %s has no auth configured", host.Host)
+	userCfg.Auth.Type = normalizedAuthType
+	if userCfg.Auth.Type == "password" && strings.TrimSpace(userCfg.Auth.Password) == "" {
+		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has empty password", host.UserRef)
 	}
-
-	return "", store.AuthConfig{}, errors.New("host has no user configured")
+	return strings.TrimSpace(userCfg.Name), userCfg.Auth, nil
 }
 
 func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
@@ -906,35 +900,15 @@ func applyUserProfileUpdateFlags(
 			return fmt.Errorf("user profile %q not found", targetRef)
 		}
 		host.UserRef = targetRef
-		host.User = ""
 	}
 
 	if !changedUser && !changedAuthType && !changedKeyPath && !changedPassword {
 		return nil
 	}
 
-	targetRef := host.UserRef
+	targetRef := strings.TrimSpace(host.UserRef)
 	if targetRef == "" {
-		baseUserName := strings.TrimSpace(host.User)
-		if changedUser {
-			baseUserName = strings.TrimSpace(userName)
-		}
-		if baseUserName == "" {
-			return errors.New("host has no user profile; set --user or --user-ref first")
-		}
-		targetRef = ensureUserProfileForName(cfg, baseUserName)
-		host.UserRef = targetRef
-		host.User = ""
-
-		// Preserve legacy host-level auth when creating first user profile.
-		if normalized := normalizeAuthType(host.Auth.Type); normalized != "" {
-			created := cfg.Users[targetRef]
-			if normalizeAuthType(created.Auth.Type) == "" {
-				host.Auth.Type = normalized
-				created.Auth = host.Auth
-				cfg.Users[targetRef] = created
-			}
-		}
+		return errors.New("host has no user_ref; set --user-ref first")
 	}
 
 	userCfg, ok := cfg.Users[targetRef]
@@ -1029,27 +1003,6 @@ func authConfigFromFlagValues(
 	return current, nil
 }
 
-func ensureUserProfileForName(cfg *store.PlainConfig, userName string) string {
-	if alias := findUserAliasByName(cfg.Users, userName); alias != "" {
-		return alias
-	}
-
-	base := normalizeUserAlias(userName)
-	if base == "" {
-		base = "user"
-	}
-	alias := base
-	for i := 2; ; i++ {
-		if _, exists := cfg.Users[alias]; !exists {
-			break
-		}
-		alias = fmt.Sprintf("%s-%d", base, i)
-	}
-
-	cfg.Users[alias] = store.UserConfig{Name: strings.TrimSpace(userName)}
-	return alias
-}
-
 func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
 	cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache)
 	if err == nil {
@@ -1104,11 +1057,9 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	defaultPort := 22
 	defaultProxyJump := ""
 	defaultEnv := map[string]string{}
-	hostAuthFallback := store.AuthConfig{}
 
 	if existing != nil {
 		defaultHost = existing.Host
-		hostAuthFallback = existing.Auth
 		if existing.UserRef != "" {
 			if userCfg, ok := cfg.Users[existing.UserRef]; ok && strings.TrimSpace(userCfg.Name) != "" {
 				defaultUserRef = existing.UserRef
@@ -1116,12 +1067,6 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 				if normalizeAuthType(userCfg.Auth.Type) != "" {
 					defaultUserAuth = userCfg.Auth
 				}
-			}
-		}
-		if defaultUserRef == "" && existing.User != "" {
-			defaultUserName = existing.User
-			if normalizeAuthType(existing.Auth.Type) != "" {
-				defaultUserAuth = existing.Auth
 			}
 		}
 		if existing.Port > 0 {
@@ -1167,7 +1112,6 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		Host:      host,
 		UserRef:   userRef,
 		Port:      port,
-		Auth:      hostAuthFallback,
 		ProxyJump: proxyJump,
 		Env:       defaultEnv,
 	}, nil

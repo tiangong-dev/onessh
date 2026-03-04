@@ -15,15 +15,17 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 	pass := []byte("top-secret-master-password")
 
 	source := NewPlainConfig()
-	source.Users["ops"] = UserConfig{Name: "ubuntu"}
-	source.Hosts["web1"] = HostConfig{
-		Host:    "1.2.3.4",
-		UserRef: "ops",
-		Port:    22,
+	source.Users["ops"] = UserConfig{
+		Name: "ubuntu",
 		Auth: AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
+	}
+	source.Hosts["web1"] = HostConfig{
+		Host:    "1.2.3.4",
+		UserRef: "ops",
+		Port:    22,
 	}
 
 	if err := repo.Save(source, pass); err != nil {
@@ -55,13 +57,17 @@ func TestRepositoryLoadWithWrongPassword(t *testing.T) {
 	pass := []byte("correct-pass")
 
 	cfg := NewPlainConfig()
-	cfg.Hosts["db"] = HostConfig{
-		Host: "10.0.0.12",
-		User: "root",
-		Port: 2222,
+	cfg.Users["dbuser"] = UserConfig{
+		Name: "root",
 		Auth: AuthConfig{
-			Type: "password",
+			Type:     "password",
+			Password: "secret-pass",
 		},
+	}
+	cfg.Hosts["db"] = HostConfig{
+		Host:    "10.0.0.12",
+		UserRef: "dbuser",
+		Port:    2222,
 	}
 
 	if err := repo.Save(cfg, pass); err != nil {

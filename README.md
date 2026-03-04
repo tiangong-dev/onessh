@@ -85,7 +85,7 @@ users:
       key_path: ~/.ssh/id_ed25519
 ```
 
-Compatibility note: legacy `hosts.<alias>.auth` is still read as fallback for older configs.
+Host entries must include `user_ref` and do not carry `auth`/`user` fields.
 
 Non-interactive host update examples:
 
@@ -208,7 +208,7 @@ users:
       key_path: ~/.ssh/id_ed25519
 ```
 
-兼容说明：旧配置中的 `hosts.<alias>.auth` 仍会作为回退逻辑被读取。
+Host 条目必须包含 `user_ref`，不再在 host 层保存 `auth` / `user` 字段。
 
 非交互更新示例：
 
