@@ -1,67 +1,67 @@
 # onessh
 
-[English](README.en.md)
+[中文](README.zh-CN.md)
 
-OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配置进行加密管理。
+OneSSH is a Go-based SSH host manager that encrypts configuration with a single master password.
 
-## 功能
+## Features
 
-- `onessh init` 初始化加密配置
-- `onessh add <alias>` 添加主机
-- `onessh update <alias>` 更新主机（可交互修改，也可通过通用参数修改）
-- `onessh rm <alias>` 删除主机
-- `onessh ls` 列出主机详情（含 user/auth/port 摘要）
-- `onessh user ls` 列出可复用 user
-- `onessh user add <alias> --name <user>` 新增可复用 user（含认证信息）
-- `onessh user update <alias>` 更新可复用 user 的认证/配置
-- `onessh user rm <alias>` 删除可复用 user
-- `onessh logout` 清除主密码缓存
-- `onessh version` 查看版本/构建信息
-- `onessh dump` 输出解密后的 YAML 到标准输出
-- `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
-- Host 通过 `user_ref` 关联独立 user profile
-- 认证信息在 user profile 层维护
-- 主密码默认缓存 10 分钟，期间无需重复输入
+- `onessh init` initialize encrypted config
+- `onessh add <alias>` add a host
+- `onessh update <alias>` update a host (interactive or with generic flags)
+- `onessh rm <alias>` remove a host
+- `onessh ls` list hosts with user/auth/port summary
+- `onessh user ls` list reusable users
+- `onessh user add <alias> --name <user>` add a reusable user (with auth)
+- `onessh user update <alias>` update reusable user auth/profile
+- `onessh user rm <alias>` remove a reusable user
+- `onessh logout` clear cached master password
+- `onessh version` print version/build info
+- `onessh dump` print decrypted YAML to stdout
+- `onessh <alias>` or `onessh connect <alias>` connect via SSH
+- Hosts reference user profiles via `user_ref`
+- Auth is maintained at profile level
+- Master password cache: no re-prompt within 10 minutes by default
 
-## 构建
+## Build
 
 ```bash
 go build -o onessh ./cmd/onessh
 ```
 
-## 安装（Homebrew）
+## Install (Homebrew)
 
-发布流水线会自动更新 `Formula/onessh.rb`。
+The release pipeline automatically updates `Formula/onessh.rb`.
 
 ```bash
 brew tap tiangong-dev/onessh https://github.com/tiangong-dev/onessh
 brew install tiangong-dev/onessh/onessh
 ```
 
-升级：
+Upgrade:
 
 ```bash
 brew update
 brew upgrade onessh
 ```
 
-## 配置文件
+## Configuration
 
-默认路径：
+Default path:
 
 ```text
 ~/.onessh/config
 ```
 
-覆盖方式：
+Override options:
 
-- 环境变量：`ONESSH_CONFIG`
-- 命令参数：`--config /path/to/config`
-- 命令参数：`--cache-ttl 10m`（默认 10 分钟）
-- 命令参数：`--no-cache` 可禁用缓存
-- 环境变量：`ONESSH_CACHE_FILE` 可指定缓存文件路径
+- Environment variable: `ONESSH_CONFIG`
+- CLI flag: `--config /path/to/config`
+- CLI flag: `--cache-ttl 10m` (default: 10 minutes)
+- CLI flag: `--no-cache` to disable cache
+- Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
 
-存储结构（分片 + SOPS 风格值加密）：
+Store layout (sharded + SOPS-like encrypted values):
 
 ```text
 ~/.onessh/config/
@@ -72,9 +72,9 @@ brew upgrade onessh
     <alias>.yaml
 ```
 
-敏感字段值以 `ENC[...]` 保存，结构保持可读、便于 Git diff。
+Sensitive field values are stored as `ENC[...]` while the file structure remains diff-friendly.
 
-示例文件：
+Example files:
 
 ```yaml
 # ~/.onessh/config/users/ops.yaml
@@ -93,7 +93,7 @@ user_ref: ops
 port: 22
 ```
 
-## 快速开始
+## Quick Start
 
 ```bash
 ./onessh init
@@ -102,12 +102,12 @@ port: 22
 ./onessh web1
 ```
 
-添加主机时可以：
+When adding a host, you can:
 
-- 输入新的 user（会创建可复用 user profile），或
-- 直接选择一个已有的 user profile。
+- create a new user profile by entering a username, or
+- select an existing user profile from the list.
 
-User profile 的 YAML 结构示例：
+User profile YAML shape:
 
 ```yaml
 users:
@@ -118,9 +118,9 @@ users:
       key_path: ~/.ssh/id_ed25519
 ```
 
-Host 条目必须包含 `user_ref`，不在 host 层保存 `auth` / `user` 字段。
+Host entries must include `user_ref` and do not keep `auth` / `user` fields at host level.
 
-非交互更新示例：
+Non-interactive host update examples:
 
 ```bash
 onessh update ais --alias pi
@@ -129,27 +129,27 @@ onessh update ais --user-ref ops
 onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
 ```
 
-## 安全说明
+## Security Notes
 
-- 加密方案：Argon2id + AES-256-GCM
-- 磁盘仅保存密文，适合进入 Git 管理
-- 主密码与明文仅在运行时内存中存在
+- Encryption: Argon2id + AES-256-GCM
+- Only encrypted data is stored on disk (Git-friendly)
+- Master password and plaintext only exist in memory at runtime
 
-## 自动发布（GitHub Actions）
+## Automated Release (GitHub Actions)
 
-仓库已配置 `release` workflow：
+This repository includes a `release` workflow:
 
-- 触发条件：推送 tag `v*`（例如 `v0.2.0`）
-- 自动执行：
-  - 构建多平台二进制（Linux/macOS/Windows, amd64/arm64）
-  - 自动创建 GitHub Release 与 checksums
-  - 自动更新 Homebrew Formula（`Formula/onessh.rb`）
+- Trigger: push tag `v*` (for example `v0.2.0`)
+- Actions:
+  - Build multi-platform binaries (Linux/macOS/Windows, amd64/arm64)
+  - Create GitHub Release and checksums automatically
+  - Update Homebrew formula (`Formula/onessh.rb`) automatically
 
-发布示例：
+Release example:
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-首次发布前请确认仓库设置 `Actions > Workflow permissions` 为 **Read and write permissions**，否则公式回写会失败。
+Before first release, ensure repository setting `Actions > Workflow permissions` is set to **Read and write permissions** so formula updates can be pushed.
