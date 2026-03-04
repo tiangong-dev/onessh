@@ -159,6 +159,8 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newUpdateCmd(opts *rootOptions) *cobra.Command {
+	var toAlias string
+
 	cmd := &cobra.Command{
 		Use:   "update <host-alias>",
 		Short: "Update an existing host entry",
@@ -185,20 +187,49 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("host %q does not exist", alias)
 			}
 
+			targetAlias := strings.TrimSpace(toAlias)
+			if targetAlias == "" {
+				targetAlias = alias
+				if term.IsTerminal(int(os.Stdin.Fd())) {
+					reader := bufio.NewReader(os.Stdin)
+					targetAlias, err = promptNonEmpty(reader, "Host alias", alias)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			targetAlias = strings.TrimSpace(targetAlias)
+			if targetAlias == "" {
+				return errors.New("target host alias cannot be empty")
+			}
+			if targetAlias != alias {
+				if _, conflict := cfg.Hosts[targetAlias]; conflict {
+					return fmt.Errorf("host %q already exists", targetAlias)
+				}
+			}
+
 			updatedHost, err := promptHostConfig(&cfg, &existing)
 			if err != nil {
 				return err
 			}
-			cfg.Hosts[alias] = updatedHost
+			if targetAlias != alias {
+				delete(cfg.Hosts, alias)
+			}
+			cfg.Hosts[targetAlias] = updatedHost
 
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s updated\n", alias)
+			if targetAlias != alias {
+				fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s renamed to %s and updated\n", alias, targetAlias)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s updated\n", alias)
+			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&toAlias, "to", "", "Rename host alias to this value")
 	return cmd
 }
 
