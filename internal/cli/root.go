@@ -816,10 +816,24 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	if err != nil {
 		return store.HostConfig{}, err
 	}
+
+	existingUserAliases := map[string]struct{}{}
+	for alias := range cfg.Users {
+		existingUserAliases[alias] = struct{}{}
+	}
+
 	userRef, err := promptUserRefForHost(inputReader, cfg, defaultUserRef, defaultUserName, &defaultUserAuth)
 	if err != nil {
 		return store.HostConfig{}, err
 	}
+	if existing != nil {
+		if _, existedBefore := existingUserAliases[userRef]; existedBefore {
+			if err := maybeEditSelectedUserProfile(inputReader, cfg, userRef); err != nil {
+				return store.HostConfig{}, err
+			}
+		}
+	}
+
 	port, err := promptPort(inputReader, defaultPort)
 	if err != nil {
 		return store.HostConfig{}, err
@@ -985,6 +999,36 @@ func createOrReuseUserProfile(
 	}
 }
 
+func maybeEditSelectedUserProfile(reader *bufio.Reader, cfg *store.PlainConfig, userRef string) error {
+	userCfg, exists := cfg.Users[userRef]
+	if !exists {
+		return nil
+	}
+
+	shouldEdit, err := promptYesNo(reader, fmt.Sprintf("Edit user profile %s now", userRef), false)
+	if err != nil {
+		return err
+	}
+	if !shouldEdit {
+		return nil
+	}
+
+	userName, err := promptNonEmpty(reader, "User", userCfg.Name)
+	if err != nil {
+		return err
+	}
+	userCfg.Name = strings.TrimSpace(userName)
+
+	auth, err := promptAuthConfig(reader, &userCfg.Auth)
+	if err != nil {
+		return err
+	}
+	userCfg.Auth = auth
+
+	cfg.Users[userRef] = userCfg
+	return nil
+}
+
 func sortedUserAliases(users map[string]store.UserConfig) []string {
 	aliases := make([]string, 0, len(users))
 	for alias := range users {
@@ -1063,6 +1107,28 @@ func promptOptional(reader *bufio.Reader, label, defaultValue string) (string, e
 		return defaultValue, nil
 	}
 	return text, nil
+}
+
+func promptYesNo(reader *bufio.Reader, label string, defaultYes bool) (bool, error) {
+	defaultValue := "n"
+	if defaultYes {
+		defaultValue = "y"
+	}
+
+	for {
+		value, err := promptOptional(reader, label+" (y/N)", defaultValue)
+		if err != nil {
+			return false, err
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "y", "yes":
+			return true, nil
+		case "n", "no", "":
+			return false, nil
+		default:
+			fmt.Fprintln(promptWriter(), "Please enter y or n.")
+		}
+	}
 }
 
 func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
