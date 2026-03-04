@@ -836,10 +836,6 @@ func promptUserRefForHost(
 	if len(cfg.Users) == 0 {
 		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 	}
-
-	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
-	}
 	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
 }
 
@@ -889,10 +885,11 @@ func promptUserRefText(
 	defaultUserRef, defaultUserName string,
 	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
+	out := promptWriter()
 	aliases := sortedUserAliases(cfg.Users)
-	fmt.Fprintln(os.Stderr, "Available user profiles:")
+	fmt.Fprintln(out, "Available user profiles:")
 	for i, alias := range aliases {
-		fmt.Fprintf(os.Stderr, "  %d) %s (%s)\n", i+1, alias, cfg.Users[alias].Name)
+		fmt.Fprintf(out, "  %d) %s (%s)\n", i+1, alias, cfg.Users[alias].Name)
 	}
 
 	defaultChoice := defaultUserRef
@@ -916,7 +913,7 @@ func promptUserRefText(
 		if err == nil && index >= 1 && index <= len(aliases) {
 			return aliases[index-1], nil
 		}
-		fmt.Fprintln(os.Stderr, "Invalid user profile. Use alias/index or type new.")
+		fmt.Fprintln(out, "Invalid user profile. Use alias/index or type new.")
 	}
 }
 
@@ -926,6 +923,7 @@ func createOrReuseUserProfile(
 	defaultUserName string,
 	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
+	out := promptWriter()
 	userName, err := promptNonEmpty(reader, "User", defaultUserName)
 	if err != nil {
 		return "", err
@@ -933,7 +931,7 @@ func createOrReuseUserProfile(
 	userName = strings.TrimSpace(userName)
 
 	if existingAlias := findUserAliasByName(cfg.Users, userName); existingAlias != "" {
-		fmt.Fprintf(os.Stderr, "Using existing user profile: %s (%s)\n", existingAlias, userName)
+		fmt.Fprintf(out, "Using existing user profile: %s (%s)\n", existingAlias, userName)
 		return existingAlias, nil
 	}
 
@@ -945,7 +943,7 @@ func createOrReuseUserProfile(
 		}
 		alias = normalizeUserAlias(alias)
 		if alias == "" {
-			fmt.Fprintln(os.Stderr, "User profile alias cannot be empty.")
+			fmt.Fprintln(out, "User profile alias cannot be empty.")
 			continue
 		}
 
@@ -953,7 +951,7 @@ func createOrReuseUserProfile(
 			if strings.EqualFold(strings.TrimSpace(existing.Name), userName) {
 				return alias, nil
 			}
-			fmt.Fprintf(os.Stderr, "User profile alias %q already exists.\n", alias)
+			fmt.Fprintf(out, "User profile alias %q already exists.\n", alias)
 			continue
 		}
 
@@ -1033,10 +1031,11 @@ func promptNonEmpty(reader *bufio.Reader, label, defaultValue string) (string, e
 }
 
 func promptOptional(reader *bufio.Reader, label, defaultValue string) (string, error) {
+	out := promptWriter()
 	if defaultValue != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s]: ", label, defaultValue)
+		fmt.Fprintf(out, "%s [%s]: ", label, defaultValue)
 	} else {
-		fmt.Fprintf(os.Stderr, "%s: ", label)
+		fmt.Fprintf(out, "%s: ", label)
 	}
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -1050,6 +1049,7 @@ func promptOptional(reader *bufio.Reader, label, defaultValue string) (string, e
 }
 
 func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
+	out := promptWriter()
 	for {
 		raw, err := promptOptional(reader, "Port", strconv.Itoa(defaultPort))
 		if err != nil {
@@ -1057,7 +1057,7 @@ func promptPort(reader *bufio.Reader, defaultPort int) (int, error) {
 		}
 		port, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil || port <= 0 || port > 65535 {
-			fmt.Fprintln(os.Stderr, "Port must be a number between 1 and 65535.")
+			fmt.Fprintln(out, "Port must be a number between 1 and 65535.")
 			continue
 		}
 		return port, nil
@@ -1142,6 +1142,7 @@ func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 	if defaultType == "" {
 		defaultType = "key"
 	}
+	out := promptWriter()
 	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		return promptAuthTypeSelect(defaultType)
 	}
@@ -1155,7 +1156,7 @@ func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 		if authType != "" {
 			return authType, nil
 		}
-		fmt.Fprintln(os.Stderr, "Auth type must be key/password or 1/2.")
+		fmt.Fprintln(out, "Auth type must be key/password or 1/2.")
 	}
 }
 
@@ -1209,9 +1210,10 @@ func summarizeAuth(auth store.AuthConfig) string {
 }
 
 func promptRequiredPassword(prompt string) ([]byte, error) {
-	fmt.Fprint(os.Stderr, prompt)
+	out := promptWriter()
+	fmt.Fprint(out, prompt)
 	secret, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(out)
 	if err != nil {
 		return nil, err
 	}
@@ -1223,9 +1225,10 @@ func promptRequiredPassword(prompt string) ([]byte, error) {
 }
 
 func promptOptionalSecret(prompt string) ([]byte, bool, error) {
-	fmt.Fprint(os.Stderr, prompt)
+	out := promptWriter()
+	fmt.Fprint(out, prompt)
 	secret, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(out)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1234,6 +1237,13 @@ func promptOptionalSecret(prompt string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	return secret, true, nil
+}
+
+func promptWriter() io.Writer {
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		return os.Stderr
+	}
+	return os.Stdout
 }
 
 func (o *rootOptions) repository() (store.Repository, error) {
