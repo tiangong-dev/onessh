@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"onessh/internal/store"
 
@@ -23,6 +24,8 @@ import (
 
 type rootOptions struct {
 	configPath string
+	cacheTTL   time.Duration
+	noCache    bool
 }
 
 func NewRootCmd() *cobra.Command {
@@ -43,6 +46,8 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to encrypted config file")
+	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
+	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 
 	rootCmd.AddCommand(
 		newInitCmd(opts),
@@ -53,6 +58,7 @@ func NewRootCmd() *cobra.Command {
 		newDumpCmd(opts),
 		newConnectCmd(opts),
 		newUserCmd(opts),
+		newLogoutCmd(opts),
 	)
 
 	return rootCmd
@@ -95,6 +101,9 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 			if err := repo.Save(cfg, pass1); err != nil {
 				return err
 			}
+			if cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache); err == nil {
+				_ = cache.Set(pass1)
+			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ onessh configuration initialized: %s\n", repo.Path)
 			return nil
@@ -121,7 +130,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -164,7 +173,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -208,7 +217,7 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -242,7 +251,7 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -275,7 +284,7 @@ func newDumpCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -331,7 +340,7 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -383,7 +392,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -432,7 +441,7 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
-			cfg, pass, err := loadConfig(repo)
+			cfg, pass, err := loadConfig(opts, repo)
 			if err != nil {
 				return err
 			}
@@ -459,6 +468,36 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
+func newLogoutCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Clear cached master password",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache)
+			if err != nil {
+				return err
+			}
+			if !cache.IsEnabled() {
+				fmt.Fprintln(cmd.OutOrStdout(), "Master password cache is disabled.")
+				return nil
+			}
+			if err := cache.Clear(); err != nil {
+				return fmt.Errorf("clear cache: %w", err)
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "✔ master password cache cleared")
+			return nil
+		},
+	}
+	return cmd
+}
+
 func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -470,7 +509,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string) error {
 		return err
 	}
 
-	cfg, pass, err := loadConfig(repo)
+	cfg, pass, err := loadConfig(opts, repo)
 	if err != nil {
 		return err
 	}
@@ -566,7 +605,19 @@ func resolveHostUser(cfg store.PlainConfig, host store.HostConfig) (string, erro
 	return "", errors.New("host has no user configured")
 }
 
-func loadConfig(repo store.Repository) (store.PlainConfig, []byte, error) {
+func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
+	cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache)
+	if err == nil {
+		if cachedPassphrase, ok, _ := cache.Get(); ok {
+			cfg, loadErr := repo.Load(cachedPassphrase)
+			if loadErr == nil {
+				return cfg, cachedPassphrase, nil
+			}
+			wipe(cachedPassphrase)
+			_ = cache.Clear()
+		}
+	}
+
 	passphrase, err := promptRequiredPassword("Enter master password: ")
 	if err != nil {
 		return store.PlainConfig{}, nil, err
@@ -580,6 +631,11 @@ func loadConfig(repo store.Repository) (store.PlainConfig, []byte, error) {
 		}
 		return store.PlainConfig{}, nil, err
 	}
+
+	if cache.IsEnabled() {
+		_ = cache.Set(passphrase)
+	}
+
 	return cfg, passphrase, nil
 }
 

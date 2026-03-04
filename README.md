@@ -14,9 +14,11 @@ OneSSH is a Go-based SSH host manager that encrypts the entire configuration wit
 - `onessh user list` list reusable users
 - `onessh user add <alias> --name <user>` add a reusable user
 - `onessh user rm <alias>` remove a reusable user
+- `onessh logout` clear cached master password
 - `onessh dump` print decrypted YAML to stdout
 - `onessh <alias>` or `onessh connect <alias>` connect via SSH
 - Reusable user profiles: hosts can reference shared users (`user_ref`)
+- Master password cache: by default, no re-prompt within 10 minutes
 
 ## Build
 
@@ -52,6 +54,9 @@ Override options:
 
 - Environment variable: `ONESSH_CONFIG`
 - CLI flag: `--config /path/to/config.enc`
+- CLI flag: `--cache-ttl 10m` (default: 10 minutes)
+- CLI flag: `--no-cache` to disable cache
+- Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
 
 ## Quick Start
 
@@ -107,9 +112,11 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对整
 - `onessh user list` 列出可复用 user
 - `onessh user add <alias> --name <user>` 新增可复用 user
 - `onessh user rm <alias>` 删除可复用 user
+- `onessh logout` 清除主密码缓存
 - `onessh dump` 输出解密后的 YAML 到标准输出
 - `onessh <alias>` 或 `onessh connect <alias>` 通过 SSH 连接
 - 支持复用用户配置：Host 可通过 `user_ref` 关联独立用户
+- 主密码默认缓存 10 分钟，期间无需重复输入
 
 ### 构建
 
@@ -145,6 +152,9 @@ brew upgrade onessh
 
 - 环境变量：`ONESSH_CONFIG`
 - 命令参数：`--config /path/to/config.enc`
+- 命令参数：`--cache-ttl 10m`（默认 10 分钟）
+- 命令参数：`--no-cache` 可禁用缓存
+- 环境变量：`ONESSH_CACHE_FILE` 可指定缓存文件路径
 
 ### 快速开始
 
