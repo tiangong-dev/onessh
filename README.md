@@ -21,6 +21,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias> [-- <ssh-args...>]` connect via SSH (supports SSH argument passthrough)
 - Hosts reference user profiles via `user_ref`
 - Auth is maintained at profile level
+- Host-level `env` is applied to local SSH process and forwarded with `SendEnv`
 - Master password cache: no re-prompt within 10 minutes by default
 
 ## Build
@@ -91,6 +92,9 @@ version: 1
 host: ENC[v1,...]
 user_ref: ops
 port: 22
+env:
+  AWS_PROFILE: ENC[v1,...]
+  HTTPS_PROXY: ENC[v1,...]
 ```
 
 ## Quick Start
@@ -128,6 +132,9 @@ onessh update ais --alias pi
 onessh update ais --host 10.0.0.12 --port 2222
 onessh update ais --user-ref ops
 onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
+onessh update ais --env AWS_PROFILE=prod --env HTTPS_PROXY=http://127.0.0.1:7890
+onessh update ais --unset-env HTTPS_PROXY
+onessh update ais --clear-env
 ```
 
 ## Security Notes

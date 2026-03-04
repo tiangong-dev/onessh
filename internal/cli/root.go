@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,8 @@ import (
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
+
+var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type rootOptions struct {
 	configPath string
@@ -122,6 +125,8 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newAddCmd(opts *rootOptions) *cobra.Command {
+	var envFlags []string
+
 	cmd := &cobra.Command{
 		Use:   "add <host-alias>",
 		Short: "Add a host entry",
@@ -151,6 +156,13 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("env") {
+				envMap, err := parseEnvAssignments(envFlags)
+				if err != nil {
+					return err
+				}
+				newHost.Env = envMap
+			}
 			cfg.Hosts[alias] = newHost
 
 			if err := repo.Save(cfg, pass); err != nil {
@@ -161,6 +173,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Host environment variable (KEY=VALUE), repeatable")
 	return cmd
 }
 
@@ -175,6 +188,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 		authTypeFlag string
 		keyPathFlag  string
 		passwordFlag string
+		envFlags     []string
+		unsetEnv     []string
+		clearEnv     bool
 	)
 
 	cmd := &cobra.Command{
@@ -227,6 +243,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				}
 				if cmd.Flags().Changed("proxy-jump") {
 					updatedHost.ProxyJump = strings.TrimSpace(proxyJump)
+				}
+				if err := applyHostEnvUpdateFlags(cmd, &updatedHost, envFlags, unsetEnv, clearEnv); err != nil {
+					return err
 				}
 
 				if err := applyUserProfileUpdateFlags(
@@ -295,6 +314,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&authTypeFlag, "auth-type", "", "Update linked user auth type (key|password)")
 	cmd.Flags().StringVar(&keyPathFlag, "key-path", "", "Update linked user key path")
 	cmd.Flags().StringVar(&passwordFlag, "password", "", "Update linked user password")
+	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Set host env entry (KEY=VALUE), repeatable")
+	cmd.Flags().StringArrayVar(&unsetEnv, "unset-env", nil, "Remove host env entry by key, repeatable")
+	cmd.Flags().BoolVar(&clearEnv, "clear-env", false, "Remove all host env entries")
 	return cmd
 }
 
@@ -813,6 +835,7 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	if host.ProxyJump != "" {
 		args = append(args, "-J", host.ProxyJump)
 	}
+	args = appendSendEnvOptions(args, host.Env)
 
 	switch strings.ToLower(auth.Type) {
 	case "key":
@@ -836,7 +859,7 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	args = append(args, destination)
 
 	binary := "ssh"
-	env := os.Environ()
+	env := mergeCommandEnv(os.Environ(), host.Env)
 	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
 		if _, err := exec.LookPath("sshpass"); err == nil {
 			binary = "sshpass"
@@ -952,6 +975,9 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 		"host",
 		"port",
 		"proxy-jump",
+		"env",
+		"unset-env",
+		"clear-env",
 		"user-ref",
 		"user",
 		"auth-type",
@@ -964,6 +990,52 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 		}
 	}
 	return false
+}
+
+func applyHostEnvUpdateFlags(
+	cmd *cobra.Command,
+	host *store.HostConfig,
+	envFlags, unsetEnv []string,
+	clearEnv bool,
+) error {
+	changedEnv := cmd.Flags().Changed("env")
+	changedUnset := cmd.Flags().Changed("unset-env")
+	changedClear := cmd.Flags().Changed("clear-env") && clearEnv
+	if !changedEnv && !changedUnset && !changedClear {
+		return nil
+	}
+
+	current := cloneStringMap(host.Env)
+	if changedClear {
+		current = map[string]string{}
+	}
+
+	if changedUnset {
+		keys, err := parseEnvKeys(unsetEnv)
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			delete(current, key)
+		}
+	}
+
+	if changedEnv {
+		entries, err := parseEnvAssignments(envFlags)
+		if err != nil {
+			return err
+		}
+		for key, value := range entries {
+			current[key] = value
+		}
+	}
+
+	if len(current) == 0 {
+		host.Env = nil
+		return nil
+	}
+	host.Env = current
+	return nil
 }
 
 func applyUserProfileUpdateFlags(
@@ -1431,6 +1503,100 @@ func normalizeUserAlias(input string) string {
 		return "user"
 	}
 	return alias
+}
+
+func parseEnvAssignments(values []string) (map[string]string, error) {
+	result := map[string]string{}
+	for _, raw := range values {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			return nil, errors.New("env entry cannot be empty")
+		}
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid env entry %q, expected KEY=VALUE", raw)
+		}
+		key := strings.TrimSpace(parts[0])
+		if !envKeyPattern.MatchString(key) {
+			return nil, fmt.Errorf("invalid env key %q", key)
+		}
+		result[key] = parts[1]
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+func parseEnvKeys(values []string) ([]string, error) {
+	keys := make([]string, 0, len(values))
+	for _, raw := range values {
+		key := strings.TrimSpace(raw)
+		if key == "" {
+			return nil, errors.New("env key cannot be empty")
+		}
+		if !envKeyPattern.MatchString(key) {
+			return nil, fmt.Errorf("invalid env key %q", key)
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func appendSendEnvOptions(args []string, envMap map[string]string) []string {
+	if len(envMap) == 0 {
+		return args
+	}
+	keys := sortedStringMapKeys(envMap)
+	for _, key := range keys {
+		args = append(args, "-o", "SendEnv="+key)
+	}
+	return args
+}
+
+func mergeCommandEnv(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+
+	merged := map[string]string{}
+	for _, item := range base {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		merged[parts[0]] = parts[1]
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+
+	keys := sortedStringMapKeys(merged)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, key+"="+merged[key])
+	}
+	return result
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(input))
+	for k, v := range input {
+		out[k] = v
+	}
+	return out
+}
+
+func sortedStringMapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func promptNonEmpty(reader *bufio.Reader, label, defaultValue string) (string, error) {

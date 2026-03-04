@@ -21,6 +21,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - `onessh <alias> [-- <ssh-args...>]` 或 `onessh connect <alias> [-- <ssh-args...>]` 通过 SSH 连接（支持 SSH 参数透传）
 - Host 通过 `user_ref` 关联独立 user profile
 - 认证信息在 user profile 层维护
+- 支持 Host 级 `env`（注入本地 SSH 进程，并通过 `SendEnv` 转发）
 - 主密码默认缓存 10 分钟，期间无需重复输入
 
 ## 构建
@@ -91,6 +92,9 @@ version: 1
 host: ENC[v1,...]
 user_ref: ops
 port: 22
+env:
+  AWS_PROFILE: ENC[v1,...]
+  HTTPS_PROXY: ENC[v1,...]
 ```
 
 ## 快速开始
@@ -128,6 +132,9 @@ onessh update ais --alias pi
 onessh update ais --host 10.0.0.12 --port 2222
 onessh update ais --user-ref ops
 onessh update ais --user ubuntu --auth-type key --key-path ~/.ssh/id_ed25519
+onessh update ais --env AWS_PROFILE=prod --env HTTPS_PROXY=http://127.0.0.1:7890
+onessh update ais --unset-env HTTPS_PROXY
+onessh update ais --clear-env
 ```
 
 ## 安全说明
