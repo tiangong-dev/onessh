@@ -52,7 +52,7 @@ brews:
       - default
     homepage: "https://github.com/tiangong-dev/onessh"
     description: "Encrypted SSH host manager with one master password"
-    license: "MIT"
+    license: "Unlicense"
     directory: Formula
     repository:
       owner: tiangong-dev
