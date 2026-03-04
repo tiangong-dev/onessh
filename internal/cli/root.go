@@ -28,7 +28,7 @@ type rootOptions struct {
 	noCache    bool
 }
 
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(version, commit, date string) *cobra.Command {
 	opts := &rootOptions{}
 
 	rootCmd := &cobra.Command{
@@ -54,11 +54,12 @@ func NewRootCmd() *cobra.Command {
 		newAddCmd(opts),
 		newUpdateCmd(opts),
 		newRmCmd(opts),
-		newListCmd(opts),
+		newLsCmd(opts),
 		newDumpCmd(opts),
 		newConnectCmd(opts),
 		newUserCmd(opts),
 		newLogoutCmd(opts),
+		newVersionCmd(version, commit, date),
 	)
 
 	return rootCmd
@@ -240,11 +241,12 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func newListCmd(opts *rootOptions) *cobra.Command {
+func newLsCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all host aliases",
-		Args:  cobra.NoArgs,
+		Use:     "ls",
+		Aliases: []string{"list"},
+		Short:   "List all host aliases",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
 			if err != nil {
@@ -314,6 +316,20 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
+func newVersionCmd(version, commit, date string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "onessh %s\n", version)
+			fmt.Fprintf(cmd.OutOrStdout(), "commit: %s\n", commit)
+			fmt.Fprintf(cmd.OutOrStdout(), "date: %s\n", date)
+		},
+	}
+	return cmd
+}
+
 func newUserCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "user",
@@ -332,9 +348,10 @@ func newUserCmd(opts *rootOptions) *cobra.Command {
 
 func newUserListCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List user profiles",
-		Args:  cobra.NoArgs,
+		Use:     "ls",
+		Aliases: []string{"list"},
+		Short:   "List user profiles",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
 			if err != nil {
