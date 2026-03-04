@@ -5,17 +5,58 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	ErrConfigNotFound  = errors.New("config file not found")
+	ErrConfigNotFound  = errors.New("config store not found")
 	ErrInvalidPassword = errors.New("invalid master password or corrupted config")
 )
 
+const (
+	storeVersion      = 3
+	docVersion        = 1
+	metaFileName      = "meta.yaml"
+	usersDirName      = "users"
+	hostsDirName      = "hosts"
+	passwordCheckText = "onessh-store-check"
+)
+
+var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 type Repository struct {
 	Path string
+}
+
+type metadataDoc struct {
+	Version int       `yaml:"version"`
+	KDF     kdfParams `yaml:"kdf"`
+	Check   string    `yaml:"check"`
+}
+
+type userAuthDoc struct {
+	Type     string `yaml:"type"`
+	KeyPath  string `yaml:"key_path,omitempty"`
+	Password string `yaml:"password,omitempty"`
+}
+
+type userDoc struct {
+	Version int         `yaml:"version"`
+	Name    string      `yaml:"name"`
+	Auth    userAuthDoc `yaml:"auth"`
+}
+
+type hostDoc struct {
+	Version   int               `yaml:"version"`
+	Host      string            `yaml:"host"`
+	UserRef   string            `yaml:"user_ref"`
+	Port      int               `yaml:"port"`
+	ProxyJump string            `yaml:"proxy_jump,omitempty"`
+	Env       map[string]string `yaml:"env,omitempty"`
 }
 
 func ResolvePath(customPath string) (string, error) {
@@ -29,39 +70,32 @@ func ResolvePath(customPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".onessh", "config.enc"), nil
+	return filepath.Join(homeDir, ".onessh", "config"), nil
 }
 
 func (r Repository) Exists() bool {
-	_, err := os.Stat(r.Path)
+	_, err := os.Stat(r.metaPath())
 	return err == nil
 }
 
 func (r Repository) Load(passphrase []byte) (PlainConfig, error) {
-	raw, err := os.ReadFile(r.Path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return PlainConfig{}, ErrConfigNotFound
-		}
-		return PlainConfig{}, fmt.Errorf("read config: %w", err)
-	}
-
-	plaintext, err := decrypt(raw, passphrase)
+	_, key, err := r.loadMetaAndKey(passphrase, false)
 	if err != nil {
 		return PlainConfig{}, err
 	}
-	defer zeroBytes(plaintext)
+	defer zeroBytes(key)
 
-	var cfg PlainConfig
-	if err := yaml.Unmarshal(plaintext, &cfg); err != nil {
-		return PlainConfig{}, fmt.Errorf("decode yaml: %w", err)
+	cfg := NewPlainConfig()
+	if err := r.loadUsers(&cfg, key); err != nil {
+		return PlainConfig{}, err
 	}
-	if cfg.Hosts == nil {
-		cfg.Hosts = map[string]HostConfig{}
+	if err := r.loadHosts(&cfg, key); err != nil {
+		return PlainConfig{}, err
 	}
-	if cfg.Users == nil {
-		cfg.Users = map[string]UserConfig{}
+	if err := validateHostUserRefs(cfg); err != nil {
+		return PlainConfig{}, err
 	}
+
 	return cfg, nil
 }
 
@@ -72,25 +106,411 @@ func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 	if cfg.Users == nil {
 		cfg.Users = map[string]UserConfig{}
 	}
-
-	plaintext, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("encode yaml: %w", err)
-	}
-	defer zeroBytes(plaintext)
-
-	encrypted, err := encrypt(plaintext, passphrase)
-	if err != nil {
-		return fmt.Errorf("encrypt config: %w", err)
+	if err := validateHostUserRefs(cfg); err != nil {
+		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(r.Path), 0o700); err != nil {
-		return fmt.Errorf("create config directory: %w", err)
+	if _, key, err := r.loadMetaAndKey(passphrase, true); err != nil {
+		return err
+	} else {
+		defer zeroBytes(key)
+		if err := r.ensureStoreDirs(); err != nil {
+			return err
+		}
+		if err := r.syncUsers(cfg, key); err != nil {
+			return err
+		}
+		if err := r.syncHosts(cfg, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
+	if err := os.RemoveAll(r.Path); err != nil {
+		return fmt.Errorf("reset config store: %w", err)
+	}
+	return r.Save(cfg, passphrase)
+}
+
+func validateHostUserRefs(cfg PlainConfig) error {
+	for hostAlias, hostCfg := range cfg.Hosts {
+		if strings.TrimSpace(hostCfg.UserRef) == "" {
+			return fmt.Errorf("host %q has empty user_ref", hostAlias)
+		}
+		if _, ok := cfg.Users[hostCfg.UserRef]; !ok {
+			return fmt.Errorf("host %q references missing user profile %q", hostAlias, hostCfg.UserRef)
+		}
+	}
+	return nil
+}
+
+func (r Repository) loadMetaAndKey(passphrase []byte, createIfMissing bool) (metadataDoc, []byte, error) {
+	if len(passphrase) == 0 {
+		return metadataDoc{}, nil, errors.New("empty passphrase")
 	}
 
-	tempFile, err := os.CreateTemp(filepath.Dir(r.Path), ".onessh-config-*.tmp")
+	raw, err := os.ReadFile(r.metaPath())
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			if createIfMissing {
+				return r.createMeta(passphrase)
+			}
+			return metadataDoc{}, nil, ErrConfigNotFound
+		}
+		return metadataDoc{}, nil, fmt.Errorf("read metadata: %w", err)
+	}
+
+	var meta metadataDoc
+	if err := yaml.Unmarshal(raw, &meta); err != nil {
+		return metadataDoc{}, nil, fmt.Errorf("decode metadata: %w", err)
+	}
+	if meta.Version != storeVersion {
+		return metadataDoc{}, nil, fmt.Errorf("unsupported store version: %d", meta.Version)
+	}
+	if meta.KDF.Name != "argon2id" {
+		return metadataDoc{}, nil, fmt.Errorf("unsupported kdf: %s", meta.KDF.Name)
+	}
+
+	salt, err := decodeB64(meta.KDF.Salt)
+	if err != nil {
+		return metadataDoc{}, nil, fmt.Errorf("decode kdf salt: %w", err)
+	}
+	key := deriveKey(passphrase, salt, meta.KDF.Time, meta.KDF.Memory, meta.KDF.Threads, meta.KDF.KeyLen)
+
+	check, err := decryptStringField(meta.Check, key)
+	if err != nil || check != passwordCheckText {
+		zeroBytes(key)
+		return metadataDoc{}, nil, ErrInvalidPassword
+	}
+
+	return meta, key, nil
+}
+
+func (r Repository) createMeta(passphrase []byte) (metadataDoc, []byte, error) {
+	if err := r.ensureStoreDirs(); err != nil {
+		return metadataDoc{}, nil, err
+	}
+
+	salt, err := randomBytes(16)
+	if err != nil {
+		return metadataDoc{}, nil, fmt.Errorf("generate kdf salt: %w", err)
+	}
+	params := defaultKDFParams(salt)
+	key := deriveKey(passphrase, salt, params.Time, params.Memory, params.Threads, params.KeyLen)
+
+	check, err := encryptStringField(passwordCheckText, key)
+	if err != nil {
+		zeroBytes(key)
+		return metadataDoc{}, nil, fmt.Errorf("encrypt password verifier: %w", err)
+	}
+
+	meta := metadataDoc{
+		Version: storeVersion,
+		KDF:     params,
+		Check:   check,
+	}
+	if err := writeYAMLAtomic(r.metaPath(), meta); err != nil {
+		zeroBytes(key)
+		return metadataDoc{}, nil, err
+	}
+
+	return meta, key, nil
+}
+
+func (r Repository) ensureStoreDirs() error {
+	if err := os.MkdirAll(r.Path, 0o700); err != nil {
+		return fmt.Errorf("create store root: %w", err)
+	}
+	if err := os.MkdirAll(r.usersDir(), 0o700); err != nil {
+		return fmt.Errorf("create users directory: %w", err)
+	}
+	if err := os.MkdirAll(r.hostsDir(), 0o700); err != nil {
+		return fmt.Errorf("create hosts directory: %w", err)
+	}
+	return nil
+}
+
+func (r Repository) loadUsers(cfg *PlainConfig, key []byte) error {
+	files, err := os.ReadDir(r.usersDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read users directory: %w", err)
+	}
+
+	for _, f := range files {
+		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
+			continue
+		}
+		alias := strings.TrimSuffix(f.Name(), ".yaml")
+		if err := validateAlias(alias); err != nil {
+			return fmt.Errorf("invalid user alias %q: %w", alias, err)
+		}
+
+		raw, err := os.ReadFile(filepath.Join(r.usersDir(), f.Name()))
+		if err != nil {
+			return fmt.Errorf("read user %s: %w", alias, err)
+		}
+
+		var doc userDoc
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("decode user %s: %w", alias, err)
+		}
+		if doc.Version != docVersion {
+			return fmt.Errorf("unsupported user doc version for %s: %d", alias, doc.Version)
+		}
+
+		name, err := decryptStringField(doc.Name, key)
+		if err != nil {
+			return fmt.Errorf("decrypt user name for %s: %w", alias, err)
+		}
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("user %s has empty name", alias)
+		}
+
+		authType := normalizeAuthTypeStore(doc.Auth.Type)
+		if authType == "" {
+			return fmt.Errorf("user %s has invalid auth type", alias)
+		}
+
+		userCfg := UserConfig{Name: strings.TrimSpace(name), Auth: AuthConfig{Type: authType}}
+		switch authType {
+		case "key":
+			keyPath, err := decryptStringField(doc.Auth.KeyPath, key)
+			if err != nil {
+				return fmt.Errorf("decrypt key_path for user %s: %w", alias, err)
+			}
+			if strings.TrimSpace(keyPath) == "" {
+				return fmt.Errorf("user %s has empty key_path", alias)
+			}
+			userCfg.Auth.KeyPath = strings.TrimSpace(keyPath)
+		case "password":
+			password, err := decryptStringField(doc.Auth.Password, key)
+			if err != nil {
+				return fmt.Errorf("decrypt password for user %s: %w", alias, err)
+			}
+			if strings.TrimSpace(password) == "" {
+				return fmt.Errorf("user %s has empty password", alias)
+			}
+			userCfg.Auth.Password = password
+		}
+
+		cfg.Users[alias] = userCfg
+	}
+	return nil
+}
+
+func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
+	files, err := os.ReadDir(r.hostsDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read hosts directory: %w", err)
+	}
+
+	for _, f := range files {
+		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
+			continue
+		}
+		alias := strings.TrimSuffix(f.Name(), ".yaml")
+		if err := validateAlias(alias); err != nil {
+			return fmt.Errorf("invalid host alias %q: %w", alias, err)
+		}
+
+		raw, err := os.ReadFile(filepath.Join(r.hostsDir(), f.Name()))
+		if err != nil {
+			return fmt.Errorf("read host %s: %w", alias, err)
+		}
+
+		var doc hostDoc
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("decode host %s: %w", alias, err)
+		}
+		if doc.Version != docVersion {
+			return fmt.Errorf("unsupported host doc version for %s: %d", alias, doc.Version)
+		}
+
+		hostValue, err := decryptStringField(doc.Host, key)
+		if err != nil {
+			return fmt.Errorf("decrypt host value for %s: %w", alias, err)
+		}
+		if strings.TrimSpace(hostValue) == "" {
+			return fmt.Errorf("host %s has empty host", alias)
+		}
+		if strings.TrimSpace(doc.UserRef) == "" {
+			return fmt.Errorf("host %s has empty user_ref", alias)
+		}
+
+		hostCfg := HostConfig{
+			Host:      strings.TrimSpace(hostValue),
+			UserRef:   strings.TrimSpace(doc.UserRef),
+			Port:      doc.Port,
+			ProxyJump: strings.TrimSpace(doc.ProxyJump),
+			Env:       map[string]string{},
+		}
+		if hostCfg.Port <= 0 {
+			hostCfg.Port = 22
+		}
+		for k, encVal := range doc.Env {
+			plainVal, err := decryptStringField(encVal, key)
+			if err != nil {
+				return fmt.Errorf("decrypt env for host %s key %s: %w", alias, k, err)
+			}
+			hostCfg.Env[k] = plainVal
+		}
+		if len(hostCfg.Env) == 0 {
+			hostCfg.Env = nil
+		}
+
+		cfg.Hosts[alias] = hostCfg
+	}
+	return nil
+}
+
+func (r Repository) syncUsers(cfg PlainConfig, key []byte) error {
+	if err := os.MkdirAll(r.usersDir(), 0o700); err != nil {
+		return fmt.Errorf("ensure users directory: %w", err)
+	}
+
+	aliases := sortedKeys(cfg.Users)
+	seen := map[string]struct{}{}
+	for _, alias := range aliases {
+		if err := validateAlias(alias); err != nil {
+			return fmt.Errorf("invalid user alias %q: %w", alias, err)
+		}
+
+		userCfg := cfg.Users[alias]
+		userName := strings.TrimSpace(userCfg.Name)
+		if userName == "" {
+			return fmt.Errorf("user profile %q has empty name", alias)
+		}
+
+		authType := normalizeAuthTypeStore(userCfg.Auth.Type)
+		if authType == "" {
+			return fmt.Errorf("user profile %q has invalid auth type", alias)
+		}
+
+		doc := userDoc{
+			Version: docVersion,
+			Auth: userAuthDoc{
+				Type: authType,
+			},
+		}
+
+		var err error
+		doc.Name, err = encryptStringField(userName, key)
+		if err != nil {
+			return fmt.Errorf("encrypt user name for %s: %w", alias, err)
+		}
+
+		switch authType {
+		case "key":
+			keyPath := strings.TrimSpace(userCfg.Auth.KeyPath)
+			if keyPath == "" {
+				return fmt.Errorf("user profile %q key auth requires key_path", alias)
+			}
+			doc.Auth.KeyPath, err = encryptStringField(keyPath, key)
+			if err != nil {
+				return fmt.Errorf("encrypt key_path for %s: %w", alias, err)
+			}
+		case "password":
+			if strings.TrimSpace(userCfg.Auth.Password) == "" {
+				return fmt.Errorf("user profile %q password auth requires password", alias)
+			}
+			doc.Auth.Password, err = encryptStringField(userCfg.Auth.Password, key)
+			if err != nil {
+				return fmt.Errorf("encrypt password for %s: %w", alias, err)
+			}
+		}
+
+		if err := writeYAMLAtomic(filepath.Join(r.usersDir(), alias+".yaml"), doc); err != nil {
+			return err
+		}
+		seen[alias] = struct{}{}
+	}
+
+	return cleanupStaleYAMLFiles(r.usersDir(), seen)
+}
+
+func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
+	if err := os.MkdirAll(r.hostsDir(), 0o700); err != nil {
+		return fmt.Errorf("ensure hosts directory: %w", err)
+	}
+
+	aliases := sortedKeys(cfg.Hosts)
+	seen := map[string]struct{}{}
+	for _, alias := range aliases {
+		if err := validateAlias(alias); err != nil {
+			return fmt.Errorf("invalid host alias %q: %w", alias, err)
+		}
+
+		hostCfg := cfg.Hosts[alias]
+		hostValue := strings.TrimSpace(hostCfg.Host)
+		if hostValue == "" {
+			return fmt.Errorf("host %q has empty host", alias)
+		}
+		if strings.TrimSpace(hostCfg.UserRef) == "" {
+			return fmt.Errorf("host %q has empty user_ref", alias)
+		}
+		if _, ok := cfg.Users[hostCfg.UserRef]; !ok {
+			return fmt.Errorf("host %q references missing user profile %q", alias, hostCfg.UserRef)
+		}
+
+		doc := hostDoc{
+			Version:   docVersion,
+			UserRef:   strings.TrimSpace(hostCfg.UserRef),
+			Port:      hostCfg.Port,
+			ProxyJump: strings.TrimSpace(hostCfg.ProxyJump),
+			Env:       map[string]string{},
+		}
+		if doc.Port <= 0 {
+			doc.Port = 22
+		}
+
+		var err error
+		doc.Host, err = encryptStringField(hostValue, key)
+		if err != nil {
+			return fmt.Errorf("encrypt host value for %s: %w", alias, err)
+		}
+
+		for k, v := range hostCfg.Env {
+			encVal, err := encryptStringField(v, key)
+			if err != nil {
+				return fmt.Errorf("encrypt env for host %s key %s: %w", alias, k, err)
+			}
+			doc.Env[k] = encVal
+		}
+		if len(doc.Env) == 0 {
+			doc.Env = nil
+		}
+
+		if err := writeYAMLAtomic(filepath.Join(r.hostsDir(), alias+".yaml"), doc); err != nil {
+			return err
+		}
+		seen[alias] = struct{}{}
+	}
+
+	return cleanupStaleYAMLFiles(r.hostsDir(), seen)
+}
+
+func writeYAMLAtomic(path string, data any) error {
+	encoded, err := yaml.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("encode yaml %s: %w", path, err)
+	}
+	defer zeroBytes(encoded)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create directory for %s: %w", path, err)
+	}
+
+	tempFile, err := os.CreateTemp(filepath.Dir(path), ".onessh-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file for %s: %w", path, err)
 	}
 	tempName := tempFile.Name()
 
@@ -101,36 +521,100 @@ func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 
 	if err := tempFile.Chmod(0o600); err != nil {
 		cleanup()
-		return fmt.Errorf("set temp file permission: %w", err)
+		return fmt.Errorf("chmod temp file for %s: %w", path, err)
 	}
-	if _, err := tempFile.Write(encrypted); err != nil {
+	if _, err := tempFile.Write(encoded); err != nil {
 		cleanup()
-		return fmt.Errorf("write temp file: %w", err)
+		return fmt.Errorf("write temp file for %s: %w", path, err)
 	}
 	if err := tempFile.Sync(); err != nil {
 		cleanup()
-		return fmt.Errorf("sync temp file: %w", err)
+		return fmt.Errorf("sync temp file for %s: %w", path, err)
 	}
 	if err := tempFile.Close(); err != nil {
 		_ = os.Remove(tempName)
-		return fmt.Errorf("close temp file: %w", err)
+		return fmt.Errorf("close temp file for %s: %w", path, err)
 	}
-	if err := os.Rename(tempName, r.Path); err != nil {
+	if err := os.Rename(tempName, path); err != nil {
 		_ = os.Remove(tempName)
-		return fmt.Errorf("replace config file: %w", err)
+		return fmt.Errorf("rename temp file for %s: %w", path, err)
 	}
-	if err := os.Chmod(r.Path, 0o600); err != nil {
-		return fmt.Errorf("set config file permission: %w", err)
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("chmod file %s: %w", path, err)
 	}
-
 	return nil
+}
+
+func cleanupStaleYAMLFiles(dir string, keep map[string]struct{}) error {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, f := range files {
+		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
+			continue
+		}
+		alias := strings.TrimSuffix(f.Name(), ".yaml")
+		if _, ok := keep[alias]; ok {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, f.Name())); err != nil {
+			return fmt.Errorf("remove stale file %s: %w", f.Name(), err)
+		}
+	}
+	return nil
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func validateAlias(alias string) error {
+	if strings.TrimSpace(alias) == "" {
+		return errors.New("alias is empty")
+	}
+	if !aliasPattern.MatchString(alias) {
+		return errors.New("alias must match [A-Za-z0-9._-]+")
+	}
+	return nil
+}
+
+func normalizeAuthTypeStore(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "key":
+		return "key"
+	case "password":
+		return "password"
+	default:
+		return ""
+	}
+}
+
+func (r Repository) metaPath() string {
+	return filepath.Join(r.Path, metaFileName)
+}
+
+func (r Repository) usersDir() string {
+	return filepath.Join(r.Path, usersDirName)
+}
+
+func (r Repository) hostsDir() string {
+	return filepath.Join(r.Path, hostsDirName)
 }
 
 func expandPath(input string) (string, error) {
 	if input == "" {
 		return "", errors.New("empty path")
 	}
-	if input[:1] == "~" {
+	if strings.HasPrefix(input, "~") {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve home directory: %w", err)
@@ -138,8 +622,8 @@ func expandPath(input string) (string, error) {
 		if input == "~" {
 			return homeDir, nil
 		}
-		if len(input) > 1 && input[1] == '/' {
-			return filepath.Join(homeDir, input[2:]), nil
+		if strings.HasPrefix(input, "~/") {
+			return filepath.Join(homeDir, strings.TrimPrefix(input, "~/")), nil
 		}
 	}
 	return filepath.Clean(input), nil

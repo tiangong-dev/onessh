@@ -5,53 +5,29 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
 
 const (
-	currentVersion = 1
+	fieldEncodingVersion = "v1"
+	fieldPrefix          = "ENC["
 )
 
 type kdfParams struct {
-	Name    string `json:"name"`
-	Salt    string `json:"salt"`
-	Time    uint32 `json:"time"`
-	Memory  uint32 `json:"memory"`
-	Threads uint8  `json:"threads"`
-	KeyLen  uint32 `json:"key_len"`
+	Name    string `yaml:"name"`
+	Salt    string `yaml:"salt"`
+	Time    uint32 `yaml:"time"`
+	Memory  uint32 `yaml:"memory"`
+	Threads uint8  `yaml:"threads"`
+	KeyLen  uint32 `yaml:"key_len"`
 }
 
-type cipherParams struct {
-	Name       string `json:"name"`
-	Nonce      string `json:"nonce"`
-	Ciphertext string `json:"ciphertext"`
-}
-
-type envelope struct {
-	Version int          `json:"version"`
-	KDF     kdfParams    `json:"kdf"`
-	Cipher  cipherParams `json:"cipher"`
-}
-
-func encrypt(plaintext, passphrase []byte) ([]byte, error) {
-	if len(passphrase) == 0 {
-		return nil, errors.New("empty passphrase")
-	}
-
-	salt, err := randomBytes(16)
-	if err != nil {
-		return nil, fmt.Errorf("generate salt: %w", err)
-	}
-	nonce, err := randomBytes(12)
-	if err != nil {
-		return nil, fmt.Errorf("generate nonce: %w", err)
-	}
-
-	params := kdfParams{
+func defaultKDFParams(salt []byte) kdfParams {
+	return kdfParams{
 		Name:    "argon2id",
 		Salt:    encodeB64(salt),
 		Time:    3,
@@ -59,76 +35,94 @@ func encrypt(plaintext, passphrase []byte) ([]byte, error) {
 		Threads: 4,
 		KeyLen:  32,
 	}
+}
 
-	key := deriveKey(passphrase, salt, params.Time, params.Memory, params.Threads, params.KeyLen)
-	defer zeroBytes(key)
+func encryptStringField(value string, key []byte) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+
+	nonce, err := randomBytes(12)
+	if err != nil {
+		return "", fmt.Errorf("generate nonce: %w", err)
+	}
+
+	ciphertext, err := encryptWithKey([]byte(value), key, nonce)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf(
+		"%s%s,%s,%s]",
+		fieldPrefix,
+		fieldEncodingVersion,
+		encodeB64(nonce),
+		encodeB64(ciphertext),
+	), nil
+}
+
+func decryptStringField(value string, key []byte) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	if !strings.HasPrefix(value, fieldPrefix) || !strings.HasSuffix(value, "]") {
+		return "", errors.New("field is not encrypted")
+	}
+
+	inner := strings.TrimSuffix(strings.TrimPrefix(value, fieldPrefix), "]")
+	parts := strings.Split(inner, ",")
+	if len(parts) != 3 {
+		return "", errors.New("invalid encrypted field format")
+	}
+	if parts[0] != fieldEncodingVersion {
+		return "", fmt.Errorf("unsupported field encoding version: %s", parts[0])
+	}
+
+	nonce, err := decodeB64(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("decode nonce: %w", err)
+	}
+	ciphertext, err := decodeB64(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("decode ciphertext: %w", err)
+	}
+
+	plaintext, err := decryptWithKey(ciphertext, key, nonce)
+	if err != nil {
+		return "", err
+	}
+	defer zeroBytes(plaintext)
+
+	return string(plaintext), nil
+}
+
+func encryptWithKey(plaintext, key, nonce []byte) ([]byte, error) {
+	if len(key) == 0 {
+		return nil, errors.New("empty encryption key")
+	}
+	if len(plaintext) == 0 {
+		return nil, errors.New("empty plaintext")
+	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("new aes cipher: %w", err)
 	}
-
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, fmt.Errorf("new gcm: %w", err)
 	}
 
-	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-
-	out := envelope{
-		Version: currentVersion,
-		KDF:     params,
-		Cipher: cipherParams{
-			Name:       "aes-256-gcm",
-			Nonce:      encodeB64(nonce),
-			Ciphertext: encodeB64(ciphertext),
-		},
-	}
-
-	serialized, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal envelope: %w", err)
-	}
-
-	return serialized, nil
+	return gcm.Seal(nil, nonce, plaintext, nil), nil
 }
 
-func decrypt(payload, passphrase []byte) ([]byte, error) {
-	if len(passphrase) == 0 {
-		return nil, errors.New("empty passphrase")
+func decryptWithKey(ciphertext, key, nonce []byte) ([]byte, error) {
+	if len(key) == 0 {
+		return nil, errors.New("empty encryption key")
 	}
-
-	var doc envelope
-	if err := json.Unmarshal(payload, &doc); err != nil {
-		return nil, fmt.Errorf("decode envelope: %w", err)
+	if len(ciphertext) == 0 {
+		return nil, errors.New("empty ciphertext")
 	}
-
-	if doc.Version != currentVersion {
-		return nil, fmt.Errorf("unsupported config version: %d", doc.Version)
-	}
-	if doc.KDF.Name != "argon2id" {
-		return nil, fmt.Errorf("unsupported kdf: %s", doc.KDF.Name)
-	}
-	if doc.Cipher.Name != "aes-256-gcm" {
-		return nil, fmt.Errorf("unsupported cipher: %s", doc.Cipher.Name)
-	}
-
-	salt, err := decodeB64(doc.KDF.Salt)
-	if err != nil {
-		return nil, fmt.Errorf("decode salt: %w", err)
-	}
-	nonce, err := decodeB64(doc.Cipher.Nonce)
-	if err != nil {
-		return nil, fmt.Errorf("decode nonce: %w", err)
-	}
-	ciphertext, err := decodeB64(doc.Cipher.Ciphertext)
-	if err != nil {
-		return nil, fmt.Errorf("decode ciphertext: %w", err)
-	}
-
-	key := deriveKey(passphrase, salt, doc.KDF.Time, doc.KDF.Memory, doc.KDF.Threads, doc.KDF.KeyLen)
-	defer zeroBytes(key)
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("new aes cipher: %w", err)

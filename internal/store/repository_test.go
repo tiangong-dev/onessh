@@ -5,13 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestRepositorySaveAndLoad(t *testing.T) {
 	t.Parallel()
 
-	repo := Repository{Path: filepath.Join(t.TempDir(), "config.enc")}
+	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("top-secret-master-password")
 
 	source := NewPlainConfig()
@@ -41,19 +42,32 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 		t.Fatalf("loaded config mismatch:\nsource=%#v\nloaded=%#v", source, loaded)
 	}
 
-	info, err := os.Stat(repo.Path)
+	metaPath := filepath.Join(repo.Path, "meta.yaml")
+	info, err := os.Stat(metaPath)
 	if err != nil {
-		t.Fatalf("stat config file: %v", err)
+		t.Fatalf("stat meta file: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("expected file permissions 0600, got %o", perm)
+	}
+
+	hostDocPath := filepath.Join(repo.Path, "hosts", "web1.yaml")
+	hostDocRaw, err := os.ReadFile(hostDocPath)
+	if err != nil {
+		t.Fatalf("read host doc: %v", err)
+	}
+	if string(hostDocRaw) == "" {
+		t.Fatalf("expected non-empty host doc")
+	}
+	if strings.Contains(string(hostDocRaw), "1.2.3.4") {
+		t.Fatalf("host doc should not store plaintext host")
 	}
 }
 
 func TestRepositoryLoadWithWrongPassword(t *testing.T) {
 	t.Parallel()
 
-	repo := Repository{Path: filepath.Join(t.TempDir(), "config.enc")}
+	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("correct-pass")
 
 	cfg := NewPlainConfig()
@@ -83,7 +97,7 @@ func TestRepositoryLoadWithWrongPassword(t *testing.T) {
 func TestRepositoryLoadMissingFile(t *testing.T) {
 	t.Parallel()
 
-	repo := Repository{Path: filepath.Join(t.TempDir(), "missing.enc")}
+	repo := Repository{Path: filepath.Join(t.TempDir(), "missing")}
 	_, err := repo.Load([]byte("any"))
 	if !errors.Is(err, ErrConfigNotFound) {
 		t.Fatalf("expected ErrConfigNotFound, got %v", err)

@@ -50,16 +50,29 @@ brew upgrade onessh
 Default path:
 
 ```text
-~/.onessh/config.enc
+~/.onessh/config
 ```
 
 Override options:
 
 - Environment variable: `ONESSH_CONFIG`
-- CLI flag: `--config /path/to/config.enc`
+- CLI flag: `--config /path/to/config`
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
 - Environment variable: `ONESSH_CACHE_FILE` to customize cache file path
+
+Store layout (sharded + SOPS-like encrypted values):
+
+```text
+~/.onessh/config/
+  meta.yaml
+  users/
+    <alias>.yaml
+  hosts/
+    <alias>.yaml
+```
+
+Sensitive field values are stored as `ENC[...]` while file structure stays diff-friendly.
 
 ## Quick Start
 
@@ -173,16 +186,29 @@ brew upgrade onessh
 默认路径：
 
 ```text
-~/.onessh/config.enc
+~/.onessh/config
 ```
 
 覆盖方式：
 
 - 环境变量：`ONESSH_CONFIG`
-- 命令参数：`--config /path/to/config.enc`
+- 命令参数：`--config /path/to/config`
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 可禁用缓存
 - 环境变量：`ONESSH_CACHE_FILE` 可指定缓存文件路径
+
+存储结构（分片 + SOPS 风格值加密）：
+
+```text
+~/.onessh/config/
+  meta.yaml
+  users/
+    <alias>.yaml
+  hosts/
+    <alias>.yaml
+```
+
+敏感字段值以 `ENC[...]` 保存，结构保持可读、便于 Git diff。
 
 ### 快速开始
 

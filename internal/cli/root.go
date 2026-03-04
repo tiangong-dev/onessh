@@ -46,7 +46,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to encrypted config file")
+	rootCmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to config store directory")
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 
@@ -100,7 +100,11 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 			}
 
 			cfg := store.NewPlainConfig()
-			if err := repo.Save(cfg, pass1); err != nil {
+			if force {
+				if err := repo.SaveWithReset(cfg, pass1); err != nil {
+					return err
+				}
+			} else if err := repo.Save(cfg, pass1); err != nil {
 				return err
 			}
 			if cache, err := newPassphraseCache(repo.Path, opts.cacheTTL, opts.noCache); err == nil {
