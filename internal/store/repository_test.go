@@ -106,3 +106,65 @@ func TestRepositoryLoadMissingFile(t *testing.T) {
 		t.Fatalf("expected ErrConfigNotFound, got %v", err)
 	}
 }
+
+func TestRepositoryLoadRejectsUnsafeKDFParams(t *testing.T) {
+	t.Parallel()
+
+	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
+	pass := []byte("correct-pass")
+
+	cfg := NewPlainConfig()
+	cfg.Users["ops"] = UserConfig{
+		Name: "ubuntu",
+		Auth: AuthConfig{
+			Type:    "key",
+			KeyPath: "~/.ssh/id_ed25519",
+		},
+	}
+	cfg.Hosts["web1"] = HostConfig{
+		Host:    "1.2.3.4",
+		UserRef: "ops",
+		Port:    22,
+	}
+
+	if err := repo.Save(cfg, pass); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	metaPath := filepath.Join(repo.Path, metaFileName)
+	rawMeta, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatalf("read meta file: %v", err)
+	}
+	mutated := strings.Replace(string(rawMeta), "memory: 65536", "memory: 999999999", 1)
+	if mutated == string(rawMeta) {
+		t.Fatalf("expected to mutate memory value in meta file")
+	}
+	if err := os.WriteFile(metaPath, []byte(mutated), 0o600); err != nil {
+		t.Fatalf("write mutated meta file: %v", err)
+	}
+
+	_, err = repo.Load(pass)
+	if err == nil || !strings.Contains(err.Error(), "invalid kdf params") {
+		t.Fatalf("expected invalid kdf params error, got %v", err)
+	}
+}
+
+func TestRepositorySaveWithResetRefusesNonOnesshDirectory(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	repoPath := filepath.Join(base, "unsafe")
+	if err := os.MkdirAll(repoPath, 0o700); err != nil {
+		t.Fatalf("mkdir unsafe dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "notes.txt"), []byte("data"), 0o600); err != nil {
+		t.Fatalf("write unexpected file: %v", err)
+	}
+
+	repo := Repository{Path: repoPath}
+	err := repo.SaveWithReset(NewPlainConfig(), []byte("pass"))
+	if err == nil || !strings.Contains(err.Error(), "refuse to reset non-onessh directory") {
+		t.Fatalf("expected refusal for non-onessh dir, got %v", err)
+	}
+}

@@ -24,6 +24,16 @@ const (
 	usersDirName      = "users"
 	hostsDirName      = "hosts"
 	passwordCheckText = "onessh-store-check"
+
+	kdfMinTime        uint32 = 1
+	kdfMaxTime        uint32 = 10
+	kdfMinMemoryKiB   uint32 = 8 * 1024
+	kdfMaxMemoryKiB   uint32 = 1024 * 1024
+	kdfMinThreads     uint8  = 1
+	kdfMaxThreads     uint8  = 64
+	kdfRequiredKeyLen uint32 = 32
+	kdfMinSaltLen            = 16
+	kdfMaxSaltLen            = 64
 )
 
 var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -51,14 +61,14 @@ type userDoc struct {
 }
 
 type hostDoc struct {
-	Version   int               `yaml:"version"`
-	Host      string            `yaml:"host"`
-	UserRef   string            `yaml:"user_ref"`
-	Port      int               `yaml:"port"`
-	ProxyJump string            `yaml:"proxy_jump,omitempty"`
-	Env       map[string]string `yaml:"env,omitempty"`
-	PreConnect  []string        `yaml:"pre_connect,omitempty"`
-	PostConnect []string        `yaml:"post_connect,omitempty"`
+	Version     int               `yaml:"version"`
+	Host        string            `yaml:"host"`
+	UserRef     string            `yaml:"user_ref"`
+	Port        int               `yaml:"port"`
+	ProxyJump   string            `yaml:"proxy_jump,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
+	PreConnect  []string          `yaml:"pre_connect,omitempty"`
+	PostConnect []string          `yaml:"post_connect,omitempty"`
 }
 
 func ResolvePath(customPath string) (string, error) {
@@ -130,6 +140,9 @@ func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 }
 
 func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
+	if err := validateResetPath(r.Path); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(r.Path); err != nil {
 		return fmt.Errorf("reset config store: %w", err)
 	}
@@ -178,6 +191,9 @@ func (r Repository) loadMetaAndKey(passphrase []byte, createIfMissing bool) (met
 	salt, err := decodeB64(meta.KDF.Salt)
 	if err != nil {
 		return metadataDoc{}, nil, fmt.Errorf("decode kdf salt: %w", err)
+	}
+	if err := validateKDFParams(meta.KDF, salt); err != nil {
+		return metadataDoc{}, nil, fmt.Errorf("invalid kdf params: %w", err)
 	}
 	key := deriveKey(passphrase, salt, meta.KDF.Time, meta.KDF.Memory, meta.KDF.Threads, meta.KDF.KeyLen)
 
@@ -348,11 +364,11 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 		}
 
 		hostCfg := HostConfig{
-			Host:      strings.TrimSpace(hostValue),
-			UserRef:   strings.TrimSpace(doc.UserRef),
-			Port:      doc.Port,
-			ProxyJump: strings.TrimSpace(doc.ProxyJump),
-			Env:       map[string]string{},
+			Host:        strings.TrimSpace(hostValue),
+			UserRef:     strings.TrimSpace(doc.UserRef),
+			Port:        doc.Port,
+			ProxyJump:   strings.TrimSpace(doc.ProxyJump),
+			Env:         map[string]string{},
 			PreConnect:  make([]string, 0, len(doc.PreConnect)),
 			PostConnect: make([]string, 0, len(doc.PostConnect)),
 		}
@@ -493,11 +509,11 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 		}
 
 		doc := hostDoc{
-			Version:   docVersion,
-			UserRef:   strings.TrimSpace(hostCfg.UserRef),
-			Port:      hostCfg.Port,
-			ProxyJump: strings.TrimSpace(hostCfg.ProxyJump),
-			Env:       map[string]string{},
+			Version:     docVersion,
+			UserRef:     strings.TrimSpace(hostCfg.UserRef),
+			Port:        hostCfg.Port,
+			ProxyJump:   strings.TrimSpace(hostCfg.ProxyJump),
+			Env:         map[string]string{},
 			PreConnect:  make([]string, 0, len(hostCfg.PreConnect)),
 			PostConnect: make([]string, 0, len(hostCfg.PostConnect)),
 		}
@@ -658,6 +674,72 @@ func normalizeAuthTypeStore(value string) string {
 	default:
 		return ""
 	}
+}
+
+func validateKDFParams(params kdfParams, salt []byte) error {
+	if params.Time < kdfMinTime || params.Time > kdfMaxTime {
+		return fmt.Errorf("time must be between %d and %d", kdfMinTime, kdfMaxTime)
+	}
+	if params.Memory < kdfMinMemoryKiB || params.Memory > kdfMaxMemoryKiB {
+		return fmt.Errorf("memory must be between %d and %d KiB", kdfMinMemoryKiB, kdfMaxMemoryKiB)
+	}
+	if params.Threads < kdfMinThreads || params.Threads > kdfMaxThreads {
+		return fmt.Errorf("threads must be between %d and %d", kdfMinThreads, kdfMaxThreads)
+	}
+	if params.KeyLen != kdfRequiredKeyLen {
+		return fmt.Errorf("key_len must be %d", kdfRequiredKeyLen)
+	}
+	if len(salt) < kdfMinSaltLen || len(salt) > kdfMaxSaltLen {
+		return fmt.Errorf("salt length must be between %d and %d bytes", kdfMinSaltLen, kdfMaxSaltLen)
+	}
+	return nil
+}
+
+func validateResetPath(path string) error {
+	target := filepath.Clean(strings.TrimSpace(path))
+	if target == "" || target == "." || target == string(filepath.Separator) {
+		return fmt.Errorf("refuse to reset unsafe path: %q", path)
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat config store path %s: %w", target, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config store path is not a directory: %s", target)
+	}
+
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return fmt.Errorf("read config store path %s: %w", target, err)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	allowed := map[string]struct{}{
+		metaFileName: {},
+		usersDirName: {},
+		hostsDirName: {},
+	}
+
+	hasMeta := false
+	for _, entry := range entries {
+		name := entry.Name()
+		if _, ok := allowed[name]; !ok {
+			return fmt.Errorf("refuse to reset non-onessh directory %s (unexpected entry %q)", target, name)
+		}
+		if name == metaFileName {
+			hasMeta = true
+		}
+	}
+	if !hasMeta {
+		return fmt.Errorf("refuse to reset directory %s without %s", target, metaFileName)
+	}
+	return nil
 }
 
 func (r Repository) metaPath() string {

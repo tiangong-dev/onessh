@@ -18,7 +18,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 - `onessh logout` clear cached master password
 - `onessh agent start|stop|status` manage in-memory cache agent
 - `onessh version` print version/build info
-- `onessh dump` print decrypted YAML to stdout
+- `onessh dump` print decrypted YAML to stdout (redacted by default; use `--show-secrets` to reveal)
 - `onessh sshconfig export|import` sync with `~/.ssh/config`
 - `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias> [-- <ssh-args...>]` connect via SSH (supports SSH argument passthrough)
 - Hosts reference user profiles via `user_ref`
@@ -71,6 +71,11 @@ Memory backend behavior:
 - Master password cache is memory-agent only (no file cache compatibility).
 - Agent auto-starts on first successful password entry.
 - You can manage it manually via `onessh agent start|status|stop`.
+
+Password auth note:
+
+- Password-based SSH auth requires `sshpass` installed.
+- Password is passed via IPC file descriptor (`sshpass -d`), not environment variables.
 
 Store layout (sharded + SOPS-like encrypted values):
 

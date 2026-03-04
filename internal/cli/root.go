@@ -26,6 +26,8 @@ import (
 
 var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+const redactedSecretValue = "[REDACTED]"
+
 type rootOptions struct {
 	configPath  string
 	cacheTTL    time.Duration
@@ -460,6 +462,8 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newDumpCmd(opts *rootOptions) *cobra.Command {
+	var showSecrets bool
+
 	cmd := &cobra.Command{
 		Use:   "dump",
 		Short: "Dump decrypted YAML to stdout",
@@ -476,7 +480,12 @@ func newDumpCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			out, err := yaml.Marshal(cfg)
+			outputCfg := cfg
+			if !showSecrets {
+				outputCfg = redactConfigForDump(cfg)
+			}
+
+			out, err := yaml.Marshal(outputCfg)
 			if err != nil {
 				return fmt.Errorf("marshal yaml: %w", err)
 			}
@@ -485,6 +494,7 @@ func newDumpCmd(opts *rootOptions) *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive secret values in output")
 	return cmd
 }
 
@@ -864,6 +874,8 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 
 func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, sshArgs []string, errOut io.Writer) error {
 	args := make([]string, 0, 10+len(sshArgs))
+	extraFiles := []*os.File{}
+	cleanupExtraFiles := []func(){}
 
 	if host.Port <= 0 {
 		host.Port = 22
@@ -915,21 +927,35 @@ func executeSSH(host store.HostConfig, userName string, auth store.AuthConfig, s
 	binary := "ssh"
 	env := mergeCommandEnv(os.Environ(), host.Env)
 	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err == nil {
-			binary = "sshpass"
-			args = append([]string{"-e", "ssh"}, args...)
-			env = append(env, "SSHPASS="+auth.Password)
-		} else {
-			fmt.Fprintln(errOut, "sshpass not found, using SSH_ASKPASS fallback.")
-			return executeSSHWithAskPass(args, env, auth.Password)
+		if _, err := exec.LookPath("sshpass"); err != nil {
+			fmt.Fprintln(errOut, "sshpass not found, password auth requires sshpass.")
+			return errors.New("password auth requires sshpass installed")
 		}
+		passwordFD, cleanup, err := newPasswordFD(auth.Password)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		extraFiles = append(extraFiles, passwordFD)
+		cleanupExtraFiles = append(cleanupExtraFiles, func() { _ = passwordFD.Close() })
+		binary = "sshpass"
+		args = append([]string{"-d", "3", "ssh"}, args...)
 	}
+
+	defer func() {
+		for _, cleanup := range cleanupExtraFiles {
+			cleanup()
+		}
+	}()
 
 	execCmd := exec.Command(binary, args...)
 	execCmd.Stdin = os.Stdin
 	execCmd.Stdout = os.Stdout
 	execCmd.Stderr = os.Stderr
 	execCmd.Env = env
+	if len(extraFiles) > 0 {
+		execCmd.ExtraFiles = extraFiles
+	}
 	return execCmd.Run()
 }
 
@@ -952,43 +978,33 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 	return "sh -lc " + shellSingleQuote(script)
 }
 
-func executeSSHWithAskPass(args []string, env []string, password string) error {
+func newPasswordFD(password string) (*os.File, func(), error) {
 	if strings.TrimSpace(password) == "" {
-		return errors.New("password auth requires non-empty password")
+		return nil, nil, errors.New("password auth requires non-empty password")
 	}
 
-	scriptFile, err := os.CreateTemp("", "onessh-askpass-*.sh")
+	reader, writer, err := os.Pipe()
 	if err != nil {
-		return fmt.Errorf("create askpass script: %w", err)
-	}
-	scriptPath := scriptFile.Name()
-	defer os.Remove(scriptPath)
-
-	content := "#!/bin/sh\nprintf '%s\\n' \"$ONESSH_ASKPASS_PASSWORD\"\n"
-	if _, err := scriptFile.WriteString(content); err != nil {
-		_ = scriptFile.Close()
-		return fmt.Errorf("write askpass script: %w", err)
-	}
-	if err := scriptFile.Close(); err != nil {
-		return fmt.Errorf("close askpass script: %w", err)
-	}
-	if err := os.Chmod(scriptPath, 0o700); err != nil {
-		return fmt.Errorf("chmod askpass script: %w", err)
+		return nil, nil, fmt.Errorf("create password pipe: %w", err)
 	}
 
-	askPassEnv := append(env,
-		"SSH_ASKPASS="+scriptPath,
-		"SSH_ASKPASS_REQUIRE=force",
-		"DISPLAY=onessh:0",
-		"ONESSH_ASKPASS_PASSWORD="+password,
-	)
+	secret := append([]byte(password), '\n')
+	defer wipe(secret)
 
-	execCmd := exec.Command("ssh", args...)
-	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = os.Stdout
-	execCmd.Stderr = os.Stderr
-	execCmd.Env = askPassEnv
-	return execCmd.Run()
+	if _, err := writer.Write(secret); err != nil {
+		_ = reader.Close()
+		_ = writer.Close()
+		return nil, nil, fmt.Errorf("write password to pipe: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		_ = reader.Close()
+		return nil, nil, fmt.Errorf("close password pipe writer: %w", err)
+	}
+
+	cleanup := func() {
+		_ = reader.Close()
+	}
+	return reader, cleanup, nil
 }
 
 func shellSingleQuote(value string) string {
@@ -1646,6 +1662,31 @@ func normalizeUserAlias(input string) string {
 		return "user"
 	}
 	return alias
+}
+
+func redactConfigForDump(cfg store.PlainConfig) store.PlainConfig {
+	redacted := store.NewPlainConfig()
+
+	for alias, userCfg := range cfg.Users {
+		userCopy := userCfg
+		if normalizeAuthType(userCopy.Auth.Type) == "password" && strings.TrimSpace(userCopy.Auth.Password) != "" {
+			userCopy.Auth.Password = redactedSecretValue
+		}
+		redacted.Users[alias] = userCopy
+	}
+
+	for alias, hostCfg := range cfg.Hosts {
+		hostCopy := hostCfg
+		if len(hostCfg.Env) > 0 {
+			hostCopy.Env = make(map[string]string, len(hostCfg.Env))
+			for key := range hostCfg.Env {
+				hostCopy.Env[key] = redactedSecretValue
+			}
+		}
+		redacted.Hosts[alias] = hostCopy
+	}
+
+	return redacted
 }
 
 func parseEnvAssignments(values []string) (map[string]string, error) {

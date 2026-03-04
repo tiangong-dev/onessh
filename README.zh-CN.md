@@ -18,7 +18,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 - `onessh logout` 清除主密码缓存
 - `onessh agent start|stop|status` 管理内存缓存 agent
 - `onessh version` 查看版本/构建信息
-- `onessh dump` 输出解密后的 YAML 到标准输出
+- `onessh dump` 输出解密后的 YAML 到标准输出（默认脱敏，`--show-secrets` 可显示敏感值）
 - `onessh sshconfig export|import` 与 `~/.ssh/config` 互通
 - `onessh <alias> [-- <ssh-args...>]` 或 `onessh connect <alias> [-- <ssh-args...>]` 通过 SSH 连接（支持 SSH 参数透传）
 - Host 通过 `user_ref` 关联独立 user profile
@@ -71,6 +71,11 @@ memory 后端行为：
 - 主密码缓存仅支持内存 agent（不再兼容文件缓存）。
 - 第一次成功输入主密码后会自动拉起 agent。
 - 也可以手动管理：`onessh agent start|status|stop`。
+
+密码认证说明：
+
+- 密码方式连接依赖本机安装 `sshpass`。
+- 密码通过 IPC 文件描述符（`sshpass -d`）传递，不通过环境变量传递。
 
 存储结构（分片 + SOPS 风格值加密）：
 
