@@ -583,10 +583,6 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 			defer wipe(pass)
 
 			aliases := sortedUserAliases(cfg.Users)
-			if len(aliases) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "(no user profiles)")
-				return nil
-			}
 
 			// Build map: user alias -> list of host aliases that reference it
 			hostsByUser := make(map[string][]string)
@@ -599,20 +595,22 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 				sort.Strings(hosts)
 			}
 
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "ALIAS\tUSER\tAUTH\tUSED_BY")
 			for _, alias := range aliases {
 				auth := summarizeAuth(cfg.Users[alias].Auth)
 				hosts := hostsByUser[alias]
+				usedBy := "-"
 				if len(hosts) > 0 {
-					// Show at most 3 hosts, then "+N more" for the rest
-					display := strings.Join(hosts[:min(3, len(hosts))], ", ")
+					// Show at most 3 hosts, then "+N more" for the rest.
+					usedBy = strings.Join(hosts[:min(3, len(hosts))], ", ")
 					if len(hosts) > 3 {
-						display += fmt.Sprintf(" (+%d more)", len(hosts)-3)
+						usedBy += fmt.Sprintf(" (+%d more)", len(hosts)-3)
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\tused_by=%s\n", alias, cfg.Users[alias].Name, auth, display)
-				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\n", alias, cfg.Users[alias].Name, auth)
 				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", alias, cfg.Users[alias].Name, auth, usedBy)
 			}
+			_ = w.Flush()
 
 			return nil
 		},
