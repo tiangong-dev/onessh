@@ -1555,8 +1555,10 @@ func promptUserRefForHost(
 	if len(cfg.Users) == 0 {
 		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 	}
-	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
+	return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
 }
+
+const selectPageSize = 10
 
 func promptUserRefSelect(
 	reader *bufio.Reader,
@@ -1565,25 +1567,32 @@ func promptUserRefSelect(
 	defaultUserAuth *store.AuthConfig,
 ) (string, error) {
 	aliases := sortedUserAliases(cfg.Users)
-	items := make([]string, 0, len(aliases)+1)
+	items := make([]string, 0, len(aliases)+2)
 	items = append(items, "Create new user profile")
+	items = append(items, "Input alias")
 	for _, alias := range aliases {
 		items = append(items, fmt.Sprintf("%s (%s)", alias, cfg.Users[alias].Name))
 	}
 
 	cursorPos := 0
-	for i, alias := range aliases {
-		if alias == defaultUserRef {
-			cursorPos = i + 1
-			break
+	if defaultUserRef != "" {
+		for i, alias := range aliases {
+			if alias == defaultUserRef {
+				cursorPos = i + 2 // +2 for "new" and "input alias"
+				break
+			}
 		}
 	}
 
+	pageSize := selectPageSize
+	if len(items) < pageSize {
+		pageSize = len(items)
+	}
 	prompt := promptui.Select{
 		Label:             "User profile (use ↑/↓ and Enter)",
 		Items:             items,
 		CursorPos:         cursorPos,
-		Size:              len(items),
+		Size:              pageSize,
 		HideHelp:          true,
 		StartInSearchMode: false,
 	}
@@ -1592,10 +1601,33 @@ func promptUserRefSelect(
 	if err != nil {
 		return "", err
 	}
-	if index == 0 {
+	switch index {
+	case 0:
 		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
+	case 1:
+		return promptUserRefByAlias(reader, cfg)
+	default:
+		return aliases[index-2], nil
 	}
-	return aliases[index-1], nil
+}
+
+func promptUserRefByAlias(reader *bufio.Reader, cfg *store.PlainConfig) (string, error) {
+	out := promptWriter()
+	for {
+		alias, err := promptNonEmpty(reader, "User profile alias", "")
+		if err != nil {
+			return "", err
+		}
+		alias = normalizeUserAlias(strings.TrimSpace(alias))
+		if alias == "" {
+			fmt.Fprintln(out, "User profile alias cannot be empty.")
+			continue
+		}
+		if _, ok := cfg.Users[alias]; ok {
+			return alias, nil
+		}
+		fmt.Fprintf(out, "User profile %q not found. Please try again.\n", alias)
+	}
 }
 
 func promptUserRefText(
