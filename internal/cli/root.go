@@ -2046,8 +2046,13 @@ func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 		defaultType = "key"
 	}
 	out := promptWriter()
-	if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		return promptAuthTypeSelect(defaultType)
+	if shouldUsePromptUI() {
+		selected, err := promptAuthTypeSelect(defaultType)
+		if err == nil {
+			return selected, nil
+		}
+		// Fallback to plain text prompt when terminal UI is unsupported.
+		fmt.Fprintln(out, "Interactive selector unavailable, fallback to text prompt.")
 	}
 
 	for {
@@ -2061,6 +2066,18 @@ func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {
 		}
 		fmt.Fprintln(out, "Auth type must be key/password or 1/2.")
 	}
+}
+
+func shouldUsePromptUI() bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("ONESSH_USE_PROMPTUI")))
+	if raw != "1" && raw != "true" && raw != "yes" {
+		return false
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+		return false
+	}
+	termEnv := strings.TrimSpace(strings.ToLower(os.Getenv("TERM")))
+	return termEnv != "" && termEnv != "dumb"
 }
 
 func promptAuthTypeSelect(defaultType string) (string, error) {
