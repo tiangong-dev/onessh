@@ -26,11 +26,11 @@ func defaultAgentSocketFlagValue() string {
 	return ""
 }
 
-func (o *rootOptions) passphraseStore(configPath string) (passphraseStore, error) {
+func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) {
 	if o == nil {
 		return nil, errors.New("root options are required")
 	}
-	return newPassphraseAgentClient(configPath, o.cacheTTL, o.noCache, o.agentSocket)
+	return newPassphraseAgentClient(dataPath, o.cacheTTL, o.noCache, o.agentSocket)
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {

@@ -29,7 +29,7 @@ var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 const redactedSecretValue = "[REDACTED]"
 
 type rootOptions struct {
-	configPath  string
+	dataPath    string
 	cacheTTL    time.Duration
 	noCache     bool
 	agentSocket string
@@ -53,7 +53,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to config store directory")
+	rootCmd.PersistentFlags().StringVar(&opts.dataPath, "data", "", "Path to data directory")
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
@@ -2150,7 +2150,7 @@ func promptWriter() io.Writer {
 }
 
 func (o *rootOptions) repository() (store.Repository, error) {
-	path, err := store.ResolvePath(o.configPath)
+	path, err := store.ResolvePath(o.dataPath)
 	if err != nil {
 		return store.Repository{}, err
 	}

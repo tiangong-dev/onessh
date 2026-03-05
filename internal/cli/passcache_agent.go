@@ -47,12 +47,12 @@ const (
 type passphraseAgentClient struct {
 	socketPath string
 	ttl        time.Duration
-	configPath string
+	dataPath   string
 }
 
 type passphraseAgentRequest struct {
-	Action     string `json:"action"`
-	ConfigPath string `json:"config_path,omitempty"`
+	Action   string `json:"action"`
+	DataPath string `json:"data_path,omitempty"`
 	SecretB64  string `json:"secret_b64,omitempty"`
 	ExpiresAt  int64  `json:"expires_at,omitempty"`
 	Token      string `json:"token,omitempty"`
@@ -84,7 +84,7 @@ type askpassEntry struct {
 }
 
 func newPassphraseAgentClient(
-	configPath string,
+	dataPath string,
 	ttl time.Duration,
 	disabled bool,
 	customSocket string,
@@ -99,7 +99,7 @@ func newPassphraseAgentClient(
 	return passphraseAgentClient{
 		socketPath: socketPath,
 		ttl:        normalizeTTL(ttl),
-		configPath: configPath,
+		dataPath:   dataPath,
 	}, nil
 }
 
@@ -112,8 +112,8 @@ func (c passphraseAgentClient) Get() ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	resp, err := c.request(passphraseAgentRequest{
-		Action:     agentActionGet,
-		ConfigPath: c.configPath,
+		Action:   agentActionGet,
+		DataPath: c.dataPath,
 	})
 	if err != nil {
 		return nil, false, nil
@@ -134,10 +134,10 @@ func (c passphraseAgentClient) Set(passphrase []byte) error {
 	}
 
 	req := passphraseAgentRequest{
-		Action:     agentActionSet,
-		ConfigPath: c.configPath,
-		SecretB64:  base64.StdEncoding.EncodeToString(passphrase),
-		ExpiresAt:  time.Now().Add(c.ttl).Unix(),
+		Action:    agentActionSet,
+		DataPath:  c.dataPath,
+		SecretB64: base64.StdEncoding.EncodeToString(passphrase),
+		ExpiresAt: time.Now().Add(c.ttl).Unix(),
 	}
 	if _, err := c.request(req); err == nil {
 		return nil
@@ -155,8 +155,8 @@ func (c passphraseAgentClient) Clear() error {
 		return nil
 	}
 	_, err := c.request(passphraseAgentRequest{
-		Action:     agentActionClear,
-		ConfigPath: c.configPath,
+		Action:   agentActionClear,
+		DataPath: c.dataPath,
 	})
 	if err != nil {
 		return nil
@@ -270,7 +270,7 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".onessh", "agent.sock"), nil
+	return filepath.Join(homeDir, ".config", "onessh", "agent.sock"), nil
 }
 
 func startPassphraseAgentProcess(socketPath string) error {
@@ -465,21 +465,21 @@ func (s *passphraseAgentState) apply(req passphraseAgentRequest) passphraseAgent
 }
 
 func (s *passphraseAgentState) handleGet(req passphraseAgentRequest) passphraseAgentResponse {
-	configPath := strings.TrimSpace(req.ConfigPath)
-	if configPath == "" {
-		return passphraseAgentResponse{OK: false, Error: "config_path is required"}
+	dataPath := strings.TrimSpace(req.DataPath)
+	if dataPath == "" {
+		return passphraseAgentResponse{OK: false, Error: "data_path is required"}
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entry, ok := s.entries[configPath]
+	entry, ok := s.entries[dataPath]
 	if !ok {
 		return passphraseAgentResponse{OK: true, Found: false}
 	}
 	if entry.expiresAt <= time.Now().Unix() {
 		wipe(entry.secret)
-		delete(s.entries, configPath)
+		delete(s.entries, dataPath)
 		return passphraseAgentResponse{OK: true, Found: false}
 	}
 	return passphraseAgentResponse{
@@ -490,9 +490,9 @@ func (s *passphraseAgentState) handleGet(req passphraseAgentRequest) passphraseA
 }
 
 func (s *passphraseAgentState) handleSet(req passphraseAgentRequest) passphraseAgentResponse {
-	configPath := strings.TrimSpace(req.ConfigPath)
-	if configPath == "" {
-		return passphraseAgentResponse{OK: false, Error: "config_path is required"}
+	dataPath := strings.TrimSpace(req.DataPath)
+	if dataPath == "" {
+		return passphraseAgentResponse{OK: false, Error: "data_path is required"}
 	}
 	if req.ExpiresAt <= time.Now().Unix() {
 		return passphraseAgentResponse{OK: false, Error: "expires_at must be in the future"}
@@ -506,10 +506,10 @@ func (s *passphraseAgentState) handleSet(req passphraseAgentRequest) passphraseA
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if old, ok := s.entries[configPath]; ok {
+	if old, ok := s.entries[dataPath]; ok {
 		wipe(old.secret)
 	}
-	s.entries[configPath] = agentEntry{
+	s.entries[dataPath] = agentEntry{
 		secret:    secret,
 		expiresAt: req.ExpiresAt,
 	}
@@ -517,12 +517,12 @@ func (s *passphraseAgentState) handleSet(req passphraseAgentRequest) passphraseA
 }
 
 func (s *passphraseAgentState) handleClear(req passphraseAgentRequest) passphraseAgentResponse {
-	configPath := strings.TrimSpace(req.ConfigPath)
+	dataPath := strings.TrimSpace(req.DataPath)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if configPath == "" {
+	if dataPath == "" {
 		for key, entry := range s.entries {
 			wipe(entry.secret)
 			delete(s.entries, key)
@@ -530,9 +530,9 @@ func (s *passphraseAgentState) handleClear(req passphraseAgentRequest) passphras
 		return passphraseAgentResponse{OK: true}
 	}
 
-	if entry, ok := s.entries[configPath]; ok {
+	if entry, ok := s.entries[dataPath]; ok {
 		wipe(entry.secret)
-		delete(s.entries, configPath)
+		delete(s.entries, dataPath)
 	}
 	return passphraseAgentResponse{OK: true}
 }

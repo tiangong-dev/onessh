@@ -75,14 +75,14 @@ func ResolvePath(customPath string) (string, error) {
 	if customPath != "" {
 		return expandPath(customPath)
 	}
-	if fromEnv := os.Getenv("ONESSH_CONFIG"); fromEnv != "" {
+	if fromEnv := os.Getenv("ONESSH_DATA"); fromEnv != "" {
 		return expandPath(fromEnv)
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".onessh", "config"), nil
+	return filepath.Join(homeDir, ".config", "onessh", "data"), nil
 }
 
 func (r Repository) Exists() bool {
