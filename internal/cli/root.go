@@ -58,6 +58,8 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
 
+	rootCmd.ValidArgsFunction = completionHostAliases(opts)
+
 	rootCmd.AddCommand(
 		newInitCmd(opts),
 		newPasswdCmd(opts),
@@ -230,9 +232,10 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "update <host-alias>",
-		Short: "Update an existing host entry",
-		Args:  cobra.ExactArgs(1),
+		Use:               "update <host-alias>",
+		Short:             "Update an existing host entry",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completionHostAliases(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			alias := strings.TrimSpace(args[0])
 			if alias == "" {
@@ -365,9 +368,10 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 
 func newRmCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rm <host-alias>",
-		Short: "Remove a host entry",
-		Args:  cobra.ExactArgs(1),
+		Use:               "rm <host-alias>",
+		Short:             "Remove a host entry",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completionHostAliases(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			alias := strings.TrimSpace(args[0])
 			if alias == "" {
@@ -533,6 +537,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 			return runConnect(cmd, opts, alias, sshArgs)
 		},
 	}
+	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
 }
 
@@ -2328,4 +2333,37 @@ func expandTilde(input string) (string, error) {
 		return homeDir + "/" + strings.TrimPrefix(input, "~/"), nil
 	}
 	return input, nil
+}
+
+// completionHostAliases returns a ValidArgsFunction that completes host aliases
+// using the cached master password (silently skips completion if no cache is available).
+func completionHostAliases(opts *rootOptions) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		repo, err := opts.repository()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		cache, err := opts.passphraseStore(repo.Path)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		pass, ok, _ := cache.Get()
+		if !ok {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		defer wipe(pass)
+		cfg, err := repo.Load(pass)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		aliases := make([]string, 0, len(cfg.Hosts))
+		for alias := range cfg.Hosts {
+			aliases = append(aliases, alias)
+		}
+		sort.Strings(aliases)
+		return aliases, cobra.ShellCompDirectiveNoFileComp
+	}
 }
