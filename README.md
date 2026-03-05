@@ -60,7 +60,7 @@ Default path:
 Override options:
 
 - Environment variable: `ONESSH_DATA`
-- CLI flag: `--config /path/to/data`
+- CLI flag: `--data /path/to/data`
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
 - CLI flag: `--agent-socket /path/to/agent.sock` (for memory backend)

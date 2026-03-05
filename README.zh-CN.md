@@ -60,7 +60,7 @@ brew upgrade onessh
 覆盖方式：
 
 - 环境变量：`ONESSH_DATA`
-- 命令参数：`--config /path/to/data`
+- 命令参数：`--data /path/to/data`
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 可禁用缓存
 - 命令参数：`--agent-socket /path/to/agent.sock`（memory 后端使用）
