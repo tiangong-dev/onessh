@@ -82,7 +82,7 @@ func ResolvePath(customPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".config", "onessh", "config"), nil
+	return filepath.Join(homeDir, ".config", "onessh"), nil
 }
 
 func (r Repository) Exists() bool {

@@ -54,7 +54,7 @@ brew upgrade onessh
 默认路径：
 
 ```text
-~/.config/onessh/config
+~/.config/onessh
 ```
 
 覆盖方式：
@@ -80,7 +80,7 @@ memory 后端行为：
 存储结构（分片 + SOPS 风格值加密）：
 
 ```text
-~/.config/onessh/config/
+~/.config/onessh/
   meta.yaml
   users/
     <alias>.yaml
@@ -93,7 +93,7 @@ memory 后端行为：
 示例文件：
 
 ```yaml
-# ~/.config/onessh/config/users/ops.yaml
+# ~/.config/onessh/users/ops.yaml
 version: 1
 name: ENC[v1,...]
 auth:
@@ -102,7 +102,7 @@ auth:
 ```
 
 ```yaml
-# ~/.config/onessh/config/hosts/ais.yaml
+# ~/.config/onessh/hosts/ais.yaml
 version: 1
 host: ENC[v1,...]
 user_ref: ops
