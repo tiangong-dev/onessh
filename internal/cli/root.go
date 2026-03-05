@@ -1526,7 +1526,7 @@ func promptUserRefForHost(
 	if len(cfg.Users) == 0 {
 		return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
 	}
-	return promptUserRefText(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
+	return promptUserRefSelect(reader, cfg, defaultUserRef, defaultUserName, defaultUserAuth)
 }
 
 func promptUserRefSelect(
