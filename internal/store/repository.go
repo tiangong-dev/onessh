@@ -143,10 +143,68 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	if err := validateResetPath(r.Path); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(r.Path); err != nil {
-		return fmt.Errorf("reset config store: %w", err)
+
+	stagedPath, cleanupStaged, err := prepareSwapTempDir(r.Path, "stage")
+	if err != nil {
+		return fmt.Errorf("prepare staged store: %w", err)
 	}
-	return r.Save(cfg, passphrase)
+	defer cleanupStaged()
+
+	stagedRepo := Repository{Path: stagedPath}
+	if err := stagedRepo.Save(cfg, passphrase); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(r.Path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Rename(stagedPath, r.Path); err != nil {
+				return fmt.Errorf("activate staged store: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("stat config store path %s: %w", r.Path, err)
+	}
+
+	backupPath, cleanupBackupPath, err := prepareSwapTempDir(r.Path, "backup")
+	if err != nil {
+		return fmt.Errorf("prepare backup path: %w", err)
+	}
+	defer cleanupBackupPath()
+	if err := os.RemoveAll(backupPath); err != nil {
+		return fmt.Errorf("prepare backup path: %w", err)
+	}
+
+	if err := os.Rename(r.Path, backupPath); err != nil {
+		return fmt.Errorf("backup current store: %w", err)
+	}
+	if err := os.Rename(stagedPath, r.Path); err != nil {
+		if rollbackErr := os.Rename(backupPath, r.Path); rollbackErr != nil {
+			return fmt.Errorf("activate staged store: %w (rollback failed: %v)", err, rollbackErr)
+		}
+		return fmt.Errorf("activate staged store: %w", err)
+	}
+
+	// Best effort cleanup. The new store is already active at this point.
+	_ = os.RemoveAll(backupPath)
+	return nil
+}
+
+func prepareSwapTempDir(targetPath, kind string) (string, func(), error) {
+	basePath := filepath.Clean(strings.TrimSpace(targetPath))
+	if basePath == "" || basePath == "." || basePath == string(filepath.Separator) {
+		return "", nil, fmt.Errorf("invalid target path %q", targetPath)
+	}
+
+	parentDir := filepath.Dir(basePath)
+	baseName := filepath.Base(basePath)
+	tempDir, err := os.MkdirTemp(parentDir, "."+baseName+"."+kind+".*")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(tempDir)
+	}
+	return tempDir, cleanup, nil
 }
 
 func validateHostUserRefs(cfg PlainConfig) error {

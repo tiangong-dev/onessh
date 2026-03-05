@@ -168,3 +168,54 @@ func TestRepositorySaveWithResetRefusesNonOnesshDirectory(t *testing.T) {
 		t.Fatalf("expected refusal for non-onessh dir, got %v", err)
 	}
 }
+
+func TestRepositorySaveWithResetKeepsOldDataOnWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
+	original := NewPlainConfig()
+	original.Users["ops"] = UserConfig{
+		Name: "ubuntu",
+		Auth: AuthConfig{
+			Type:    "key",
+			KeyPath: "~/.ssh/id_ed25519",
+		},
+	}
+	original.Hosts["web1"] = HostConfig{
+		Host:    "1.2.3.4",
+		UserRef: "ops",
+		Port:    22,
+	}
+
+	oldPass := []byte("old-pass")
+	if err := repo.Save(original, oldPass); err != nil {
+		t.Fatalf("save original config: %v", err)
+	}
+
+	replacement := NewPlainConfig()
+	replacement.Users["db"] = UserConfig{
+		Name: "root",
+		Auth: AuthConfig{
+			Type:     "password",
+			Password: "new-secret",
+		},
+	}
+	replacement.Hosts["db"] = HostConfig{
+		Host:    "10.0.0.12",
+		UserRef: "db",
+		Port:    2222,
+	}
+
+	err := repo.SaveWithReset(replacement, []byte(""))
+	if err == nil {
+		t.Fatalf("expected SaveWithReset to fail with empty passphrase")
+	}
+
+	loaded, err := repo.Load(oldPass)
+	if err != nil {
+		t.Fatalf("expected old data to remain readable, got %v", err)
+	}
+	if !reflect.DeepEqual(loaded, original) {
+		t.Fatalf("expected original config to remain unchanged:\nwant=%#v\ngot=%#v", original, loaded)
+	}
+}
