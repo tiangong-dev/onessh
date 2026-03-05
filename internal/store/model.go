@@ -7,13 +7,14 @@ type AuthConfig struct {
 }
 
 type HostConfig struct {
-	Host      string            `yaml:"host"`
-	UserRef   string            `yaml:"user_ref"`
-	Port      int               `yaml:"port"`
-	ProxyJump string            `yaml:"proxy_jump,omitempty"`
-	Env       map[string]string `yaml:"env,omitempty"`
-	PreConnect  []string        `yaml:"pre_connect,omitempty"`
-	PostConnect []string        `yaml:"post_connect,omitempty"`
+	Host        string            `yaml:"host"`
+	UserRef     string            `yaml:"user_ref"`
+	Port        int               `yaml:"port"`
+	ProxyJump   string            `yaml:"proxy_jump,omitempty"`
+	Tags        []string          `yaml:"tags,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
+	PreConnect  []string          `yaml:"pre_connect,omitempty"`
+	PostConnect []string          `yaml:"post_connect,omitempty"`
 }
 
 type UserConfig struct {

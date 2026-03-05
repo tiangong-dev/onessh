@@ -146,6 +146,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 		envFlags    []string
 		preConnect  []string
 		postConnect []string
+		tags        []string
 	)
 
 	cmd := &cobra.Command{
@@ -198,6 +199,9 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 				}
 				newHost.PostConnect = cmds
 			}
+			if cmd.Flags().Changed("tag") {
+				newHost.Tags = normalizeTags(tags)
+			}
 			cfg.Hosts[alias] = newHost
 
 			if err := repo.Save(cfg, pass); err != nil {
@@ -211,6 +215,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Host environment variable (KEY=VALUE), repeatable")
 	cmd.Flags().StringArrayVar(&preConnect, "pre-connect", nil, "Remote command run before interactive shell, repeatable")
 	cmd.Flags().StringArrayVar(&postConnect, "post-connect", nil, "Remote command run after interactive shell exits, repeatable")
+	cmd.Flags().StringArrayVar(&tags, "tag", nil, "Tag to assign to host, repeatable")
 	return cmd
 }
 
@@ -232,6 +237,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 		postConnect  []string
 		clearPre     bool
 		clearPost    bool
+		tags         []string
+		unsetTags    []string
+		clearTags    bool
 	)
 
 	cmd := &cobra.Command{
@@ -292,6 +300,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				if err := applyHostHookUpdateFlags(cmd, &updatedHost, preConnect, postConnect, clearPre, clearPost); err != nil {
 					return err
 				}
+				applyHostTagUpdateFlags(cmd, &updatedHost, tags, unsetTags, clearTags)
 
 				if err := applyUserProfileUpdateFlags(
 					cmd,
@@ -366,6 +375,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&postConnect, "post-connect", nil, "Set post-connect remote command, repeatable")
 	cmd.Flags().BoolVar(&clearPre, "clear-pre-connect", false, "Remove all pre-connect commands")
 	cmd.Flags().BoolVar(&clearPost, "clear-post-connect", false, "Remove all post-connect commands")
+	cmd.Flags().StringArrayVar(&tags, "tag", nil, "Add tag to host, repeatable")
+	cmd.Flags().StringArrayVar(&unsetTags, "untag", nil, "Remove tag from host, repeatable")
+	cmd.Flags().BoolVar(&clearTags, "clear-tags", false, "Remove all tags")
 	return cmd
 }
 
@@ -430,6 +442,8 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newLsCmd(opts *rootOptions) *cobra.Command {
+	var filterTag string
+
 	cmd := &cobra.Command{
 		Use:   "ls",
 		Short: "List hosts with summary information",
@@ -448,12 +462,15 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 
 			aliases := make([]string, 0, len(cfg.Hosts))
 			for alias := range cfg.Hosts {
+				if filterTag != "" && !hostHasTag(cfg.Hosts[alias], filterTag) {
+					continue
+				}
 				aliases = append(aliases, alias)
 			}
 			sort.Strings(aliases)
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ALIAS\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tSTATUS")
+			fmt.Fprintln(w, "ALIAS\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
 			for _, alias := range aliases {
 				host := cfg.Hosts[alias]
 				userName, authType, status := summarizeHostIdentityForList(cfg, host)
@@ -469,9 +486,13 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 				if userRef == "" {
 					userRef = "-"
 				}
+				tagStr := "-"
+				if len(host.Tags) > 0 {
+					tagStr = strings.Join(host.Tags, ",")
+				}
 				fmt.Fprintf(
 					w,
-					"%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+					"%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
 					alias,
 					host.Host,
 					userName,
@@ -479,6 +500,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 					authType,
 					port,
 					proxyJump,
+					tagStr,
 					status,
 				)
 			}
@@ -487,6 +509,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&filterTag, "tag", "", "Filter hosts by tag")
 	return cmd
 }
 
@@ -1281,6 +1304,9 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 		"auth-type",
 		"key-path",
 		"password",
+		"tag",
+		"untag",
+		"clear-tags",
 	}
 	for _, name := range checks {
 		if cmd.Flags().Changed(name) {
@@ -2721,6 +2747,61 @@ func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, t
 		execCmd.ExtraFiles = extraFiles
 	}
 	return execCmd.Run()
+}
+
+func normalizeTags(tags []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" {
+			continue
+		}
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func applyHostTagUpdateFlags(cmd *cobra.Command, host *store.HostConfig, tags, unsetTags []string, clearTags bool) {
+	if !cmd.Flags().Changed("tag") && !cmd.Flags().Changed("untag") && !(cmd.Flags().Changed("clear-tags") && clearTags) {
+		return
+	}
+	current := cloneStringSlice(host.Tags)
+	if clearTags && cmd.Flags().Changed("clear-tags") {
+		current = nil
+	}
+	if cmd.Flags().Changed("untag") {
+		remove := map[string]struct{}{}
+		for _, t := range unsetTags {
+			remove[strings.ToLower(strings.TrimSpace(t))] = struct{}{}
+		}
+		filtered := current[:0]
+		for _, t := range current {
+			if _, skip := remove[t]; !skip {
+				filtered = append(filtered, t)
+			}
+		}
+		current = filtered
+	}
+	if cmd.Flags().Changed("tag") {
+		current = append(current, tags...)
+	}
+	host.Tags = normalizeTags(current)
+}
+
+func hostHasTag(host store.HostConfig, tag string) bool {
+	tag = strings.ToLower(strings.TrimSpace(tag))
+	for _, t := range host.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // completionHostAliases returns a ValidArgsFunction that completes host aliases
