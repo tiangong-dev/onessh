@@ -143,13 +143,25 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "add <host-alias>",
+		Use:   "add [host-alias]",
 		Short: "Add a host entry",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			alias := strings.TrimSpace(args[0])
+			var alias string
+			if len(args) > 0 {
+				alias = strings.TrimSpace(args[0])
+			}
 			if alias == "" {
-				return errors.New("host alias cannot be empty")
+				if term.IsTerminal(int(os.Stdin.Fd())) {
+					reader := bufio.NewReader(os.Stdin)
+					var err error
+					alias, err = promptNonEmpty(reader, "Host alias", "")
+					if err != nil {
+						return err
+					}
+				} else {
+					return errors.New("host alias is required (usage: onessh add <host-alias>)")
+				}
 			}
 
 			repo, err := opts.repository()
