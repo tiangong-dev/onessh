@@ -54,13 +54,13 @@ brew upgrade onessh
 默认路径：
 
 ```text
-~/.config/onessh
+~/.config/onessh/data
 ```
 
 覆盖方式：
 
-- 环境变量：`ONESSH_CONFIG`
-- 命令参数：`--config /path/to/config`
+- 环境变量：`ONESSH_DATA`
+- 命令参数：`--config /path/to/data`
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 可禁用缓存
 - 命令参数：`--agent-socket /path/to/agent.sock`（memory 后端使用）
@@ -80,7 +80,7 @@ memory 后端行为：
 存储结构（分片 + SOPS 风格值加密）：
 
 ```text
-~/.config/onessh/
+~/.config/onessh/data/
   meta.yaml
   users/
     <alias>.yaml
@@ -93,7 +93,7 @@ memory 后端行为：
 示例文件：
 
 ```yaml
-# ~/.config/onessh/users/ops.yaml
+# ~/.config/onessh/data/users/ops.yaml
 version: 1
 name: ENC[v1,...]
 auth:
@@ -102,7 +102,7 @@ auth:
 ```
 
 ```yaml
-# ~/.config/onessh/hosts/ais.yaml
+# ~/.config/onessh/data/hosts/ais.yaml
 version: 1
 host: ENC[v1,...]
 user_ref: ops

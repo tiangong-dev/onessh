@@ -54,13 +54,13 @@ brew upgrade onessh
 Default path:
 
 ```text
-~/.config/onessh
+~/.config/onessh/data
 ```
 
 Override options:
 
-- Environment variable: `ONESSH_CONFIG`
-- CLI flag: `--config /path/to/config`
+- Environment variable: `ONESSH_DATA`
+- CLI flag: `--config /path/to/data`
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
 - CLI flag: `--agent-socket /path/to/agent.sock` (for memory backend)
@@ -80,7 +80,7 @@ Password auth note:
 Store layout (sharded + SOPS-like encrypted values):
 
 ```text
-~/.config/onessh/
+~/.config/onessh/data/
   meta.yaml
   users/
     <alias>.yaml
@@ -93,7 +93,7 @@ Sensitive field values are stored as `ENC[...]` while the file structure remains
 Example files:
 
 ```yaml
-# ~/.config/onessh/users/ops.yaml
+# ~/.config/onessh/data/users/ops.yaml
 version: 1
 name: ENC[v1,...]
 auth:
@@ -102,7 +102,7 @@ auth:
 ```
 
 ```yaml
-# ~/.config/onessh/hosts/ais.yaml
+# ~/.config/onessh/data/hosts/ais.yaml
 version: 1
 host: ENC[v1,...]
 user_ref: ops
