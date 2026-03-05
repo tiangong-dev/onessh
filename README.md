@@ -54,7 +54,7 @@ brew upgrade onessh
 Default path:
 
 ```text
-~/.onessh/config
+~/.config/onessh/config
 ```
 
 Override options:
@@ -80,7 +80,7 @@ Password auth note:
 Store layout (sharded + SOPS-like encrypted values):
 
 ```text
-~/.onessh/config/
+~/.config/onessh/config/
   meta.yaml
   users/
     <alias>.yaml
@@ -93,7 +93,7 @@ Sensitive field values are stored as `ENC[...]` while the file structure remains
 Example files:
 
 ```yaml
-# ~/.onessh/config/users/ops.yaml
+# ~/.config/onessh/config/users/ops.yaml
 version: 1
 name: ENC[v1,...]
 auth:
@@ -102,7 +102,7 @@ auth:
 ```
 
 ```yaml
-# ~/.onessh/config/hosts/ais.yaml
+# ~/.config/onessh/config/hosts/ais.yaml
 version: 1
 host: ENC[v1,...]
 user_ref: ops

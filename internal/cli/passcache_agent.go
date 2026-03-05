@@ -270,7 +270,7 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".onessh", "agent.sock"), nil
+	return filepath.Join(homeDir, ".config", "onessh", "agent.sock"), nil
 }
 
 func startPassphraseAgentProcess(socketPath string) error {
