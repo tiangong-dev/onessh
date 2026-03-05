@@ -7,6 +7,7 @@ OneSSH is a Go-based SSH host manager that encrypts configuration with a single 
 ## Features
 
 - `onessh init` initialize encrypted config
+- `onessh passwd` change master password
 - `onessh add <alias>` add a host
 - `onessh update <alias>` update a host (interactive or with generic flags)
 - `onessh rm <alias>` remove a host

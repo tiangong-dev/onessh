@@ -7,6 +7,7 @@ OneSSH 是一个 Go 实现的 SSH 主机管理 CLI，使用单一主密码对配
 ## 功能
 
 - `onessh init` 初始化加密配置
+- `onessh passwd` 修改主密码
 - `onessh add <alias>` 添加主机
 - `onessh update <alias>` 更新主机（可交互修改，也可通过通用参数修改）
 - `onessh rm <alias>` 删除主机

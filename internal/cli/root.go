@@ -60,6 +60,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 
 	rootCmd.AddCommand(
 		newInitCmd(opts),
+		newPasswdCmd(opts),
 		newAddCmd(opts),
 		newUpdateCmd(opts),
 		newRmCmd(opts),
@@ -807,6 +808,57 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
+func newPasswdCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "passwd",
+		Short: "Change master password",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			currentPassphrase, err := promptRequiredPassword("Enter current master password: ")
+			if err != nil {
+				return err
+			}
+			defer wipe(currentPassphrase)
+
+			newPassphrase, err := promptRequiredPassword("Enter new master password: ")
+			if err != nil {
+				return err
+			}
+			defer wipe(newPassphrase)
+
+			confirmPassphrase, err := promptRequiredPassword("Confirm new master password: ")
+			if err != nil {
+				return err
+			}
+			defer wipe(confirmPassphrase)
+
+			if !bytes.Equal(newPassphrase, confirmPassphrase) {
+				return errors.New("new passwords do not match")
+			}
+
+			cache, err := opts.passphraseStore(repo.Path)
+			if err != nil {
+				return err
+			}
+			if err := changeMasterPassword(repo, cache, currentPassphrase, newPassphrase); err != nil {
+				if errors.Is(err, store.ErrConfigNotFound) {
+					return fmt.Errorf("%w (run `onessh init` first)", err)
+				}
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "✔ master password updated")
+			return nil
+		},
+	}
+	return cmd
+}
+
 func newLogoutCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout",
@@ -835,6 +887,34 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func changeMasterPassword(
+	repo store.Repository,
+	cache passphraseStore,
+	currentPassphrase, newPassphrase []byte,
+) error {
+	if len(bytes.TrimSpace(currentPassphrase)) == 0 {
+		return errors.New("current password cannot be empty")
+	}
+	if len(bytes.TrimSpace(newPassphrase)) == 0 {
+		return errors.New("new password cannot be empty")
+	}
+	if bytes.Equal(currentPassphrase, newPassphrase) {
+		return errors.New("new password must be different from current password")
+	}
+
+	cfg, err := repo.Load(currentPassphrase)
+	if err != nil {
+		return err
+	}
+	if err := repo.SaveWithReset(cfg, newPassphrase); err != nil {
+		return err
+	}
+	if cache != nil && cache.IsEnabled() {
+		_ = cache.Set(newPassphrase)
+	}
+	return nil
 }
 
 func parseConnectInvocation(cmd *cobra.Command, args []string) (string, []string, error) {
