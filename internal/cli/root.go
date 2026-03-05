@@ -71,6 +71,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newConnectCmd(opts),
 		newTestCmd(opts),
 		newExecCmd(opts),
+		newCpCmd(opts),
 		newSSHConfigCmd(opts),
 		newAgentCmd(opts),
 		newAskPassCmd(opts),
@@ -2335,6 +2336,153 @@ func expandTilde(input string) (string, error) {
 		return homeDir + "/" + strings.TrimPrefix(input, "~/"), nil
 	}
 	return input, nil
+}
+
+func newCpCmd(opts *rootOptions) *cobra.Command {
+	var recursive bool
+
+	cmd := &cobra.Command{
+		Use:   "cp <src> <dst>",
+		Short: "Copy files to/from a remote host (alias:path notation)",
+		Long: `Copy files between local and remote hosts using scp.
+
+Use alias:path to specify a remote path:
+  onessh cp web1:/etc/hosts ./hosts       # download
+  onessh cp ./deploy.sh web1:/tmp/        # upload`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			alias, remotePath, isUpload, err := parseCpArgs(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			target, exists := cfg.Hosts[alias]
+			if !exists {
+				return fmt.Errorf("host %q not found", alias)
+			}
+			userName, auth, err := resolveHostIdentity(cfg, target)
+			if err != nil {
+				return err
+			}
+			return executeSCP(target, userName, auth, remotePath, args[0], args[1], isUpload, recursive, opts.agentSocket)
+		},
+	}
+	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 1 || strings.Contains(toComplete, ":") {
+			return nil, cobra.ShellCompDirectiveDefault
+		}
+		aliases, _ := completionHostAliases(opts)(cmd, args, toComplete)
+		for i, a := range aliases {
+			aliases[i] = a + ":"
+		}
+		return aliases, cobra.ShellCompDirectiveNoSpace
+	}
+	return cmd
+}
+
+func parseCpArgs(src, dst string) (alias, remotePath string, isUpload bool, err error) {
+	srcAlias, srcPath, srcHasAlias := splitCpArg(src)
+	dstAlias, dstPath, dstHasAlias := splitCpArg(dst)
+
+	switch {
+	case srcHasAlias && dstHasAlias:
+		return "", "", false, errors.New("only one side can be a remote path (alias:path)")
+	case !srcHasAlias && !dstHasAlias:
+		return "", "", false, errors.New("one side must be a remote path (alias:path)")
+	case srcHasAlias:
+		return srcAlias, srcPath, false, nil // download
+	default:
+		return dstAlias, dstPath, true, nil // upload
+	}
+}
+
+func splitCpArg(arg string) (alias, path string, ok bool) {
+	idx := strings.Index(arg, ":")
+	if idx <= 0 {
+		return "", "", false
+	}
+	return arg[:idx], arg[idx+1:], true
+}
+
+func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath, srcArg, dstArg string, isUpload, recursive bool, agentSocket string) error {
+	if host.Port <= 0 {
+		host.Port = 22
+	}
+	args := []string{"-P", strconv.Itoa(host.Port)}
+	if recursive {
+		args = append(args, "-r")
+	}
+	if host.ProxyJump != "" {
+		args = append(args, "-J", host.ProxyJump)
+	}
+
+	switch strings.ToLower(auth.Type) {
+	case "key":
+		if auth.KeyPath != "" {
+			keyPath, err := expandTilde(auth.KeyPath)
+			if err != nil {
+				return err
+			}
+			args = append(args, "-i", keyPath)
+		}
+	case "password":
+	default:
+		return fmt.Errorf("unsupported auth type: %s", auth.Type)
+	}
+
+	destination := host.Host
+	if userName != "" {
+		destination = fmt.Sprintf("%s@%s", userName, host.Host)
+	}
+	if isUpload {
+		args = append(args, srcArg, destination+":"+remotePath)
+	} else {
+		args = append(args, destination+":"+remotePath, dstArg)
+	}
+
+	binary := "scp"
+	env := os.Environ()
+	var extraFiles []*os.File
+
+	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
+		if _, err := exec.LookPath("sshpass"); err == nil {
+			fd, cleanup, err := newPasswordFD(auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			extraFiles = append(extraFiles, fd)
+			binary = "sshpass"
+			args = append([]string{"-d", "3", "scp"}, args...)
+		} else {
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			env = append(env, askPassEnv...)
+		}
+	}
+
+	execCmd := exec.Command(binary, args...)
+	execCmd.Stdin = os.Stdin
+	execCmd.Stdout = os.Stdout
+	execCmd.Stderr = os.Stderr
+	execCmd.Env = env
+	if len(extraFiles) > 0 {
+		execCmd.ExtraFiles = extraFiles
+	}
+	return execCmd.Run()
 }
 
 func newExecCmd(opts *rootOptions) *cobra.Command {
