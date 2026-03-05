@@ -70,6 +70,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newDumpCmd(opts),
 		newConnectCmd(opts),
 		newTestCmd(opts),
+		newExecCmd(opts),
 		newSSHConfigCmd(opts),
 		newAgentCmd(opts),
 		newAskPassCmd(opts),
@@ -2334,6 +2335,107 @@ func expandTilde(input string) (string, error) {
 		return homeDir + "/" + strings.TrimPrefix(input, "~/"), nil
 	}
 	return input, nil
+}
+
+func newExecCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "exec <host-alias> <command> [args...]",
+		Short: "Run a command on a remote host non-interactively",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := strings.TrimSpace(args[0])
+			if alias == "" {
+				return errors.New("host alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			target, exists := cfg.Hosts[alias]
+			if !exists {
+				return fmt.Errorf("host %q not found", alias)
+			}
+			userName, auth, err := resolveHostIdentity(cfg, target)
+			if err != nil {
+				return err
+			}
+			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket)
+		},
+	}
+	cmd.ValidArgsFunction = completionHostAliases(opts)
+	return cmd
+}
+
+func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket string) error {
+	if host.Port <= 0 {
+		host.Port = 22
+	}
+	args := []string{"-p", strconv.Itoa(host.Port), "-T"}
+	if host.ProxyJump != "" {
+		args = append(args, "-J", host.ProxyJump)
+	}
+
+	switch strings.ToLower(auth.Type) {
+	case "key":
+		if auth.KeyPath != "" {
+			keyPath, err := expandTilde(auth.KeyPath)
+			if err != nil {
+				return err
+			}
+			args = append(args, "-i", keyPath)
+		}
+	case "password":
+	default:
+		return fmt.Errorf("unsupported auth type: %s", auth.Type)
+	}
+
+	destination := host.Host
+	if userName != "" {
+		destination = fmt.Sprintf("%s@%s", userName, host.Host)
+	}
+	args = append(args, destination)
+	args = append(args, remoteCmd...)
+
+	binary := "ssh"
+	env := os.Environ()
+	var extraFiles []*os.File
+
+	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
+		if _, err := exec.LookPath("sshpass"); err == nil {
+			fd, cleanup, err := newPasswordFD(auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			extraFiles = append(extraFiles, fd)
+			binary = "sshpass"
+			args = append([]string{"-d", "3", "ssh"}, args...)
+		} else {
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			env = append(env, askPassEnv...)
+		}
+	}
+
+	execCmd := exec.Command(binary, args...)
+	execCmd.Stdin = os.Stdin
+	execCmd.Stdout = os.Stdout
+	execCmd.Stderr = os.Stderr
+	execCmd.Env = env
+	if len(extraFiles) > 0 {
+		execCmd.ExtraFiles = extraFiles
+	}
+	return execCmd.Run()
 }
 
 func newTestCmd(opts *rootOptions) *cobra.Command {
