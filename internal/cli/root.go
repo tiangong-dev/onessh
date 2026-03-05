@@ -384,8 +384,28 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			if _, exists := cfg.Hosts[alias]; !exists {
+			hostCfg, exists := cfg.Hosts[alias]
+			if !exists {
 				return fmt.Errorf("host %q does not exist", alias)
+			}
+
+			userRef := strings.TrimSpace(hostCfg.UserRef)
+			if userRef != "" {
+				// Check if this user is only used by this host
+				inUseBy := hostAliasesUsingUser(cfg, userRef)
+				if len(inUseBy) == 1 && inUseBy[0] == alias {
+					// User is only used by this host, prompt whether to delete user together
+					if term.IsTerminal(int(os.Stdin.Fd())) {
+						reader := bufio.NewReader(os.Stdin)
+						shouldDeleteUser, err := promptYesNo(reader, fmt.Sprintf("Also delete user profile %s", userRef), false)
+						if err != nil {
+							return err
+						}
+						if shouldDeleteUser {
+							delete(cfg.Users, userRef)
+						}
+					}
+				}
 			}
 
 			delete(cfg.Hosts, alias)
@@ -568,18 +588,27 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 				return nil
 			}
 
-			usage := map[string]int{}
-			for _, hostCfg := range cfg.Hosts {
+			// Build map: user alias -> list of host aliases that reference it
+			hostsByUser := make(map[string][]string)
+			for hostAlias, hostCfg := range cfg.Hosts {
 				if hostCfg.UserRef != "" {
-					usage[hostCfg.UserRef]++
+					hostsByUser[hostCfg.UserRef] = append(hostsByUser[hostCfg.UserRef], hostAlias)
 				}
+			}
+			for _, hosts := range hostsByUser {
+				sort.Strings(hosts)
 			}
 
 			for _, alias := range aliases {
-				inUse := usage[alias]
 				auth := summarizeAuth(cfg.Users[alias].Auth)
-				if inUse > 0 {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\tused_by=%d\n", alias, cfg.Users[alias].Name, auth, inUse)
+				hosts := hostsByUser[alias]
+				if len(hosts) > 0 {
+					// Show at most 3 hosts, then "+N more" for the rest
+					display := strings.Join(hosts[:min(3, len(hosts))], ", ")
+					if len(hosts) > 3 {
+						display += fmt.Sprintf(" (+%d more)", len(hosts)-3)
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\tused_by=%s\n", alias, cfg.Users[alias].Name, auth, display)
 				} else {
 					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tauth=%s\n", alias, cfg.Users[alias].Name, auth)
 				}
@@ -765,7 +794,7 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 
 			inUseBy := hostAliasesUsingUser(cfg, alias)
 			if len(inUseBy) > 0 {
-				return fmt.Errorf("user profile %q is used by hosts: %s", alias, strings.Join(inUseBy, ", "))
+				return fmt.Errorf("user profile %q is used by host(s): %s. Please remove these hosts first", alias, strings.Join(inUseBy, ", "))
 			}
 
 			delete(cfg.Users, alias)
