@@ -123,7 +123,6 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newAgentCmd(opts),
 		newAskPassCmd(opts),
 		newUserCmd(opts),
-		newTagCmd(opts),
 		newLogoutCmd(opts),
 		newLogCmd(opts),
 		newVersionCmd(version, commit, date),

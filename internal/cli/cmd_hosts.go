@@ -397,6 +397,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 		filterTag string
 		filter    string
 		format    string
+		tagsOnly  bool
 	)
 
 	cmd := &cobra.Command{
@@ -414,6 +415,27 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 			defer wipe(pass)
+
+			if tagsOnly {
+				seen := make(map[string]struct{})
+				for _, host := range cfg.Hosts {
+					for _, t := range host.Tags {
+						t = strings.ToLower(strings.TrimSpace(t))
+						if t != "" {
+							seen[t] = struct{}{}
+						}
+					}
+				}
+				tags := make([]string, 0, len(seen))
+				for t := range seen {
+					tags = append(tags, t)
+				}
+				sort.Strings(tags)
+				for _, t := range tags {
+					fmt.Fprintln(cmd.OutOrStdout(), t)
+				}
+				return nil
+			}
 
 			aliases := collectFilteredHosts(cfg, filterTag, filter)
 
@@ -508,6 +530,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Filter hosts by tag")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
+	cmd.Flags().BoolVar(&tagsOnly, "tags", false, "List all tags used across hosts")
 	return cmd
 }
 
