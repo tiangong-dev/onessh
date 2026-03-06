@@ -19,6 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"onessh/internal/audit"
 	"onessh/internal/store"
 
 	"github.com/manifoldco/promptui"
@@ -37,6 +38,8 @@ type rootOptions struct {
 	noCache     bool
 	agentSocket string
 	quiet       bool
+	noLog       bool
+	auditLog    *audit.Logger
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -62,6 +65,21 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
+	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")
+
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if opts.noLog {
+			return
+		}
+		repo, err := opts.repository()
+		if err != nil {
+			return
+		}
+		opts.auditLog, _ = audit.Open(repo.Path)
+	}
+	rootCmd.PersistentPostRun = func(cmd *cobra.Command, args []string) {
+		_ = opts.auditLog.Close()
+	}
 
 	rootCmd.ValidArgsFunction = completionHostAliases(opts)
 
@@ -84,6 +102,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newUserCmd(opts),
 		newTagCmd(opts),
 		newLogoutCmd(opts),
+		newLogCmd(opts),
 		newVersionCmd(version, commit, date),
 	)
 
@@ -139,6 +158,7 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 				_ = cache.Set(pass1)
 			}
 
+			opts.logEvent("init", "", "", "", "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ onessh configuration initialized: %s\n", repo.Path)
 			return nil
 		},
@@ -219,6 +239,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("add_host", alias, newHost.Host, "", "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s added\n", alias)
 			return nil
 		},
@@ -367,6 +388,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("update_host", targetAlias, updatedHost.Host, "", "ok", nil)
 			if targetAlias != alias {
 				fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s renamed to %s and updated\n", alias, targetAlias)
 			} else {
@@ -451,6 +473,7 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("rm_host", alias, hostCfg.Host, "", "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s removed\n", alias)
 			return nil
 		},
@@ -940,6 +963,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("add_user", alias, "", cfg.Users[alias].Name, "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s added (%s)\n", alias, cfg.Users[alias].Name)
 			return nil
 		},
@@ -1011,6 +1035,7 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("update_user", alias, "", userCfg.Name, "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s updated\n", alias)
 			return nil
 		},
@@ -1059,6 +1084,7 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("rm_user", alias, "", "", "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s removed\n", alias)
 			return nil
 		},
@@ -1110,6 +1136,7 @@ func newPasswdCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			opts.logEvent("passwd", "", "", "", "ok", nil)
 			fmt.Fprintln(cmd.OutOrStdout(), "✔ master password updated")
 			return nil
 		},
@@ -1237,7 +1264,13 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	if !opts.quiet {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
 	}
-	return executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket)
+	connErr := executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket)
+	if connErr != nil {
+		opts.logEvent("connect", alias, target.Host, userName, "fail", connErr)
+	} else {
+		opts.logEvent("connect", alias, target.Host, userName, "ok", nil)
+	}
+	return connErr
 }
 
 func executeSSH(
@@ -2568,6 +2601,89 @@ func (o *rootOptions) repository() (store.Repository, error) {
 	return store.Repository{Path: path}, nil
 }
 
+func (o *rootOptions) logEvent(action, alias, host, user, result string, err error) {
+	if o.auditLog == nil {
+		return
+	}
+	e := audit.Event{
+		Action: action,
+		Alias:  alias,
+		Host:   host,
+		User:   user,
+		Result: result,
+	}
+	if err != nil {
+		e.Error = err.Error()
+	}
+	o.auditLog.Log(e)
+}
+
+func newLogCmd(opts *rootOptions) *cobra.Command {
+	var (
+		last   int
+		action string
+		alias  string
+		format string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "log",
+		Short: "Show audit log entries",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			events, err := audit.ReadLast(repo.Path, last, action, alias)
+			if err != nil {
+				return err
+			}
+			if len(events) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No audit log entries.")
+				return nil
+			}
+
+			if format == "json" {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(events)
+			}
+
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "TIME\tACTION\tALIAS\tHOST\tUSER\tRESULT\tERROR")
+			for _, e := range events {
+				errMsg := "-"
+				if e.Error != "" {
+					errMsg = e.Error
+				}
+				aliasCol := e.Alias
+				if aliasCol == "" {
+					aliasCol = "-"
+				}
+				hostCol := e.Host
+				if hostCol == "" {
+					hostCol = "-"
+				}
+				userCol := e.User
+				if userCol == "" {
+					userCol = "-"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					e.Time, e.Action, aliasCol, hostCol, userCol, e.Result, errMsg)
+			}
+			_ = w.Flush()
+			return nil
+		},
+	}
+	cmd.Flags().IntVarP(&last, "last", "n", 20, "Number of recent entries to show (0=all)")
+	cmd.Flags().StringVar(&action, "action", "", "Filter by action (connect, exec, add_host, etc.)")
+	cmd.Flags().StringVar(&alias, "alias", "", "Filter by host/user alias")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
+	return cmd
+}
+
 func currentUserName() string {
 	u, err := user.Current()
 	if err != nil {
@@ -2712,7 +2828,13 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			return executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
+			cpErr := executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
+			if cpErr != nil {
+				opts.logEvent("cp", alias, target.Host, userName, "fail", cpErr)
+			} else {
+				opts.logEvent("cp", alias, target.Host, userName, "ok", nil)
+			}
+			return cpErr
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
@@ -2951,7 +3073,13 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
+			execErr := executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
+			if execErr != nil {
+				opts.logEvent("exec", alias, target.Host, userName, "fail", execErr)
+			} else {
+				opts.logEvent("exec", alias, target.Host, userName, "ok", nil)
+			}
+			return execErr
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Run command on all hosts")
@@ -3089,9 +3217,11 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := runSSHTest(target, userName, auth, timeout, opts.agentSocket); err != nil {
-				return fmt.Errorf("connectivity check failed: %w", err)
+			if testErr := runSSHTest(target, userName, auth, timeout, opts.agentSocket); testErr != nil {
+				opts.logEvent("test", alias, target.Host, userName, "fail", testErr)
+				return fmt.Errorf("connectivity check failed: %w", testErr)
 			}
+			opts.logEvent("test", alias, target.Host, userName, "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ %s is reachable\n", alias)
 			return nil
 		},
