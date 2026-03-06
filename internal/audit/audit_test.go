@@ -228,6 +228,44 @@ func TestRotateBySizeKeepsBoundedFiles(t *testing.T) {
 	}
 }
 
+func TestAuditSettingsDefaultAndSetEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataPath := filepath.Join(tmpDir, "data")
+	if err := os.MkdirAll(dataPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := LoadSettings(dataPath)
+	if err != nil {
+		t.Fatalf("LoadSettings default: %v", err)
+	}
+	if s.Enabled {
+		t.Fatalf("expected default enabled=false, got true")
+	}
+
+	if err := SetEnabled(dataPath, true); err != nil {
+		t.Fatalf("SetEnabled(true): %v", err)
+	}
+	s, err = LoadSettings(dataPath)
+	if err != nil {
+		t.Fatalf("LoadSettings after enable: %v", err)
+	}
+	if !s.Enabled {
+		t.Fatalf("expected enabled=true")
+	}
+
+	if err := SetEnabled(dataPath, false); err != nil {
+		t.Fatalf("SetEnabled(false): %v", err)
+	}
+	s, err = LoadSettings(dataPath)
+	if err != nil {
+		t.Fatalf("LoadSettings after disable: %v", err)
+	}
+	if s.Enabled {
+		t.Fatalf("expected enabled=false")
+	}
+}
+
 func writeGzipFile(path string, content []byte) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {

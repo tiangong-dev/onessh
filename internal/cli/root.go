@@ -38,6 +38,7 @@ type rootOptions struct {
 	noCache            bool
 	agentSocket        string
 	quiet              bool
+	log                bool
 	noLog              bool
 	auditLogMaxSizeMB  int
 	auditLogMaxBackups int
@@ -69,11 +70,14 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
+	rootCmd.PersistentFlags().BoolVar(&opts.log, "log", false, "Enable audit logging for this command run")
 	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")
 	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxSizeMB, "audit-log-max-size-mb", 10, "Audit log rotate max size in MB")
 	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxBackups, "audit-log-max-backups", 5, "Audit log max backup files to keep")
 	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxAge, "audit-log-max-age", 7, "Audit log max backup age in days")
 	rootCmd.PersistentFlags().BoolVar(&opts.auditLogCompress, "audit-log-compress", true, "Compress rotated audit logs")
+	_ = rootCmd.PersistentFlags().MarkHidden("no-log")
+	_ = rootCmd.PersistentFlags().MarkDeprecated("no-log", "default is now disabled; use --log to enable for one run")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if opts.noLog {
@@ -82,6 +86,21 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		repo, err := opts.repository()
 		if err != nil {
 			return err
+		}
+		enabled := false
+		if opts.log {
+			enabled = true
+		} else if opts.noLog {
+			enabled = false
+		} else {
+			settings, err := audit.LoadSettings(repo.Path)
+			if err != nil {
+				return err
+			}
+			enabled = settings.Enabled
+		}
+		if !enabled {
+			return nil
 		}
 		cfg := audit.RotateConfig{
 			MaxSizeMB:  opts.auditLogMaxSizeMB,
@@ -2649,7 +2668,7 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "log",
-		Short: "Show audit log entries",
+		Short: "Show and manage audit logging",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repo, err := opts.repository()
@@ -2702,7 +2721,74 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&action, "action", "", "Filter by action (connect, exec, add_host, etc.)")
 	cmd.Flags().StringVar(&alias, "alias", "", "Filter by host/user alias")
 	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
+	cmd.AddCommand(
+		newLogEnableCmd(opts),
+		newLogDisableCmd(opts),
+		newLogStatusCmd(opts),
+	)
 	return cmd
+}
+
+func newLogEnableCmd(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable",
+		Short: "Enable audit logging by default",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+			if err := audit.SetEnabled(repo.Path, true); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Audit logging enabled by default.")
+			return nil
+		},
+	}
+}
+
+func newLogDisableCmd(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable",
+		Short: "Disable audit logging by default",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+			if err := audit.SetEnabled(repo.Path, false); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Audit logging disabled by default.")
+			return nil
+		},
+	}
+}
+
+func newLogStatusCmd(opts *rootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show whether audit logging is enabled by default",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+			settings, err := audit.LoadSettings(repo.Path)
+			if err != nil {
+				return err
+			}
+			state := "disabled"
+			if settings.Enabled {
+				state = "enabled"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Audit logging is %s by default.\n", state)
+			return nil
+		},
+	}
 }
 
 func currentUserName() string {
