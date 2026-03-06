@@ -17,23 +17,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newConnectCmd(opts *rootOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "connect <host-alias> [-- <ssh-args...>]",
-		Short: "Connect to a host alias",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			alias, sshArgs, err := parseConnectInvocation(cmd, args)
-			if err != nil {
-				return err
-			}
-			return runConnect(cmd, opts, alias, sshArgs)
-		},
-	}
-	cmd.ValidArgsFunction = completionHostAliases(opts)
-	return cmd
-}
-
 func newVersionCmd(version, commit, date string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",

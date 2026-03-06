@@ -24,7 +24,7 @@ OneSSH is a CLI SSH manager built around a single master password. All host addr
 
 ## Also — SSH Operations
 
-- `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias>` connect interactively (SSH argument passthrough supported)
+- `onessh <alias> [-- <ssh-args...>]` connect interactively (SSH argument passthrough supported)
 - `onessh exec <alias> <command> [args...]` run a command non-interactively; stdout/stderr piped through
 - `onessh exec --tag <tag> <command>` batch exec on hosts matching tag
 - `onessh cp <src>... <dst>` copy files via scp using `alias:path` notation; supports multi-file upload and remote-to-remote
@@ -89,7 +89,6 @@ Once enabled, `onessh <Tab>` completes host aliases using the agent cache (no pa
 ```bash
 onessh web1
 onessh web1 -- -L 8080:127.0.0.1:80 -N
-onessh connect web1
 ```
 
 ### Run a remote command

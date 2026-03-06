@@ -113,7 +113,6 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newLsCmd(opts),
 		newShowCmd(opts),
 		newDumpCmd(opts),
-		newConnectCmd(opts),
 		newTestCmd(opts),
 		newExecCmd(opts),
 		newCpCmd(opts),
