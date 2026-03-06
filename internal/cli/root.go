@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -457,6 +458,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 	var (
 		filterTag string
 		filter    string
+		format    string
 	)
 
 	cmd := &cobra.Command{
@@ -476,6 +478,49 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 			defer wipe(pass)
 
 			aliases := collectFilteredHosts(cfg, filterTag, filter)
+
+			if format == "json" {
+				rows := make([]map[string]interface{}, 0, len(aliases))
+				for _, alias := range aliases {
+					host := cfg.Hosts[alias]
+					userName, authType, status := summarizeHostIdentityForList(cfg, host)
+					port := host.Port
+					if port <= 0 {
+						port = 22
+					}
+					proxyJump := strings.TrimSpace(host.ProxyJump)
+					if proxyJump == "" {
+						proxyJump = "-"
+					}
+					userRef := strings.TrimSpace(host.UserRef)
+					if userRef == "" {
+						userRef = "-"
+					}
+					tagStr := "-"
+					if len(host.Tags) > 0 {
+						tagStr = strings.Join(host.Tags, ",")
+					}
+					desc := "-"
+					if host.Description != "" {
+						desc = host.Description
+					}
+					rows = append(rows, map[string]interface{}{
+						"alias":      alias,
+						"desc":      desc,
+						"host":      host.Host,
+						"user":      userName,
+						"user_ref":  userRef,
+						"auth":      authType,
+						"port":      port,
+						"proxy_jump": proxyJump,
+						"tags":      tagStr,
+						"status":    status,
+					})
+				}
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(rows)
+			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "ALIAS\tDESC\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
@@ -524,6 +569,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Filter hosts by tag")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
 	return cmd
 }
 
