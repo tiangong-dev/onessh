@@ -4,42 +4,31 @@
 
 OneSSH 是一个以单一主密码为核心的 CLI SSH 管理工具。所有主机地址、凭证和配置均加密存储——解锁一次，即可连接主机、执行远程命令、传输文件，全程无需重复输入密码。
 
-## 功能
+## 核心 — 加密凭证管理
 
-**加密凭证管理**
 - `onessh init` 初始化加密配置
 - `onessh passwd` 修改主密码
-- `onessh logout` 清除主密码缓存
-- `onessh agent start|stop|status` 管理内存缓存 agent
-- `onessh dump` 输出解密后的 YAML（默认脱敏，`--show-secrets` 显示原始值）
-
-**主机管理**
-- `onessh add <alias>` 添加主机
-- `onessh update <alias>` 更新主机（交互式或通过参数）
+- `onessh add <alias>` 添加主机（交互式或通过参数）
+- `onessh update <alias>` 更新主机
 - `onessh rm <alias>` 删除主机
 - `onessh ls [--tag <tag>]` 列出主机详情；支持按标签过滤
-- `onessh user ls` 列出可复用 user profile
-- `onessh user add <alias>` 新增 user profile（含认证信息）
-- `onessh user update <alias>` 更新 user profile
-- `onessh user rm <alias>` 删除 user profile
+- `onessh user ls / add / update / rm` 管理可复用 user profile
 - `onessh sshconfig export|import` 与 `~/.ssh/config` 互通
+- `onessh dump` 输出解密后的 YAML（`--show-secrets` 显示敏感值）
+- `onessh logout` 清除主密码缓存
+- `onessh agent start|stop|status` 管理内存缓存 agent
+- 通过 `user_ref` 关联可复用 user profile，认证信息集中在 profile 层维护
+- 支持 Host 级 `env`、`pre_connect` / `post_connect` 钩子、`tags` 标签
+- 主密码默认缓存 10 分钟，期间无需重复输入
 
-**SSH 操作**
+## 附加 — SSH 操作
+
 - `onessh <alias> [-- <ssh-args...>]` 或 `onessh connect <alias>` 交互式连接（支持 SSH 参数透传）
 - `onessh exec <alias> <command> [args...]` 非交互式执行远程命令，stdout/stderr 直接透传
 - `onessh cp <src> <dst>` 通过 scp 传输文件，使用 `alias:path` 格式指定远端路径
-- `onessh test [<alias>]` 检测 SSH 连通性；`--all` 可批量检测所有主机
-
-**其他**
-- `onessh completion bash|zsh|fish|powershell` 生成 shell 补全脚本（可 Tab 补全主机别名）
+- `onessh test [<alias>]` 检测 SSH 连通性；`--all` 批量检测所有主机
+- `onessh completion bash|zsh|fish|powershell` 生成 shell 补全脚本（Tab 补全主机别名）
 - `onessh version` 查看版本/构建信息
-
-**主机级特性**
-- 通过 `user_ref` 关联可复用的 user profile，认证信息集中在 profile 层维护
-- 支持 Host 级 `env`（注入本地 SSH 进程，并通过 `SendEnv` 转发）
-- 支持 `pre_connect` / `post_connect` 钩子，在连接前后执行远端指令
-- 支持 `tags` 标签，用于主机分组和过滤
-- 主密码默认缓存 10 分钟，期间无需重复输入
 
 ## 构建
 

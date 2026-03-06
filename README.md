@@ -4,42 +4,31 @@
 
 OneSSH is a CLI SSH manager built around a single master password. All host addresses, credentials, and configuration are encrypted at rest — you unlock everything once, then connect, run commands, and transfer files without ever typing credentials again.
 
-## Features
+## Core — Encrypted Credential Management
 
-**Encrypted credential store**
 - `onessh init` initialize encrypted config
 - `onessh passwd` change master password
-- `onessh logout` clear cached master password
-- `onessh agent start|stop|status` manage in-memory cache agent
-- `onessh dump` print decrypted YAML to stdout (redacted by default; use `--show-secrets` to reveal)
-
-**Host management**
-- `onessh add <alias>` add a host
-- `onessh update <alias>` update a host (interactive or with flags)
+- `onessh add <alias>` add a host (interactive or with flags)
+- `onessh update <alias>` update a host
 - `onessh rm <alias>` remove a host
 - `onessh ls [--tag <tag>]` list hosts with summary; filter by tag
-- `onessh user ls` list reusable user profiles
-- `onessh user add <alias>` add a reusable user profile (with auth)
-- `onessh user update <alias>` update a user profile
-- `onessh user rm <alias>` remove a user profile
+- `onessh user ls / add / update / rm` manage reusable user profiles
 - `onessh sshconfig export|import` sync with `~/.ssh/config`
+- `onessh dump` print decrypted YAML (`--show-secrets` to reveal secrets)
+- `onessh logout` clear cached master password
+- `onessh agent start|stop|status` manage in-memory cache agent
+- Hosts reference reusable user profiles via `user_ref`; auth lives at the profile level
+- Host-level `env`, `pre_connect` / `post_connect` hooks, `tags`
+- Master password cached for 10 minutes by default
 
-**SSH operations**
-- `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias>` connect interactively (supports SSH argument passthrough)
+## Also — SSH Operations
+
+- `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias>` connect interactively (SSH argument passthrough supported)
 - `onessh exec <alias> <command> [args...]` run a command non-interactively; stdout/stderr piped through
 - `onessh cp <src> <dst>` copy files via scp using `alias:path` notation
-- `onessh test [<alias>]` check SSH connectivity; use `--all` to test every host
-
-**Other**
-- `onessh completion bash|zsh|fish|powershell` generate shell completion (tab-completes host aliases)
+- `onessh test [<alias>]` check SSH connectivity; `--all` to test every host
+- `onessh completion bash|zsh|fish|powershell` shell completion (tab-completes host aliases)
 - `onessh version` print version/build info
-
-**Per-host features**
-- Hosts reference reusable user profiles via `user_ref`
-- Host-level `env` applied to local SSH process and forwarded with `SendEnv`
-- `pre_connect` / `post_connect` hooks for remote bootstrap/cleanup
-- `tags` for grouping and filtering hosts
-- Master password cached for 10 minutes by default; no re-prompt within the window
 
 ## Build
 
