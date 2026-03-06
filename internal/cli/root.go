@@ -21,10 +21,6 @@ type rootOptions struct {
 	quiet              bool
 	log                bool
 	noLog              bool
-	auditLogMaxSizeMB  int
-	auditLogMaxBackups int
-	auditLogMaxAge     int
-	auditLogCompress   bool
 	auditLog           *audit.Logger
 }
 
@@ -53,10 +49,6 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&opts.log, "log", false, "Enable audit logging for this command run")
 	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")
-	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxSizeMB, "audit-log-max-size-mb", 10, "Audit log rotate max size in MB")
-	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxBackups, "audit-log-max-backups", 5, "Audit log max backup files to keep")
-	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxAge, "audit-log-max-age", 7, "Audit log max backup age in days")
-	rootCmd.PersistentFlags().BoolVar(&opts.auditLogCompress, "audit-log-compress", true, "Compress rotated audit logs")
 	_ = rootCmd.PersistentFlags().MarkHidden("no-log")
 	_ = rootCmd.PersistentFlags().MarkDeprecated("no-log", "default is now disabled; use --log to enable for one run")
 
@@ -83,16 +75,27 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		if !enabled {
 			return nil
 		}
-		cfg := audit.RotateConfig{
-			MaxSizeMB:  opts.auditLogMaxSizeMB,
-			MaxBackups: opts.auditLogMaxBackups,
-			MaxAgeDays: opts.auditLogMaxAge,
-			Compress:   opts.auditLogCompress,
+		rotateCfg := audit.DefaultRotateConfig()
+		if f := cmd.Flags().Lookup("audit-log-max-size-mb"); f != nil && f.Changed {
+			v, _ := cmd.Flags().GetInt("audit-log-max-size-mb")
+			rotateCfg.MaxSizeMB = v
 		}
-		if err := audit.ValidateRotateConfig(cfg); err != nil {
+		if f := cmd.Flags().Lookup("audit-log-max-backups"); f != nil && f.Changed {
+			v, _ := cmd.Flags().GetInt("audit-log-max-backups")
+			rotateCfg.MaxBackups = v
+		}
+		if f := cmd.Flags().Lookup("audit-log-max-age"); f != nil && f.Changed {
+			v, _ := cmd.Flags().GetInt("audit-log-max-age")
+			rotateCfg.MaxAgeDays = v
+		}
+		if f := cmd.Flags().Lookup("audit-log-compress"); f != nil && f.Changed {
+			v, _ := cmd.Flags().GetBool("audit-log-compress")
+			rotateCfg.Compress = v
+		}
+		if err := audit.ValidateRotateConfig(rotateCfg); err != nil {
 			return err
 		}
-		opts.auditLog, err = audit.Open(repo.Path, cfg)
+		opts.auditLog, err = audit.Open(repo.Path, rotateCfg)
 		if err != nil {
 			return err
 		}

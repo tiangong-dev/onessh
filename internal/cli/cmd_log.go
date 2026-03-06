@@ -39,10 +39,14 @@ func (o *rootOptions) logEvent(action, alias, host, user, result string, err err
 
 func newLogCmd(opts *rootOptions) *cobra.Command {
 	var (
-		last   int
-		action string
-		alias  string
-		format string
+		last               int
+		action             string
+		alias              string
+		format             string
+		auditLogMaxSizeMB  int
+		auditLogMaxBackups int
+		auditLogMaxAge     int
+		auditLogCompress   bool
 	)
 
 	cmd := &cobra.Command{
@@ -100,6 +104,10 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&action, "action", "", "Filter by action (connect, exec, add_host, etc.)")
 	cmd.Flags().StringVar(&alias, "alias", "", "Filter by host/user alias")
 	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
+	cmd.PersistentFlags().IntVar(&auditLogMaxSizeMB, "audit-log-max-size-mb", 10, "Audit log rotate max size in MB")
+	cmd.PersistentFlags().IntVar(&auditLogMaxBackups, "audit-log-max-backups", 5, "Audit log max backup files to keep")
+	cmd.PersistentFlags().IntVar(&auditLogMaxAge, "audit-log-max-age", 7, "Audit log max backup age in days")
+	cmd.PersistentFlags().BoolVar(&auditLogCompress, "audit-log-compress", true, "Compress rotated audit logs")
 	cmd.AddCommand(
 		newLogEnableCmd(opts),
 		newLogDisableCmd(opts),
