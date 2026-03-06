@@ -81,6 +81,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newAgentCmd(opts),
 		newAskPassCmd(opts),
 		newUserCmd(opts),
+		newTagCmd(opts),
 		newLogoutCmd(opts),
 		newVersionCmd(version, commit, date),
 	)
@@ -741,6 +742,58 @@ func newUserCmd(opts *rootOptions) *cobra.Command {
 		newUserUpdateCmd(opts),
 		newUserRmCmd(opts),
 	)
+	return cmd
+}
+
+func newTagCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "tag",
+		Short: "Manage host tags",
+		Args:  cobra.NoArgs,
+	}
+
+	cmd.AddCommand(newTagLsCmd(opts))
+	return cmd
+}
+
+func newTagLsCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ls",
+		Short: "List all tags used across hosts",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			seen := make(map[string]struct{})
+			for _, host := range cfg.Hosts {
+				for _, t := range host.Tags {
+					t = strings.ToLower(strings.TrimSpace(t))
+					if t != "" {
+						seen[t] = struct{}{}
+					}
+				}
+			}
+			tags := make([]string, 0, len(seen))
+			for t := range seen {
+				tags = append(tags, t)
+			}
+			sort.Strings(tags)
+
+			for _, t := range tags {
+				fmt.Fprintln(cmd.OutOrStdout(), t)
+			}
+			return nil
+		},
+	}
 	return cmd
 }
 
