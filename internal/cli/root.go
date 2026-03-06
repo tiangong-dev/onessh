@@ -577,6 +577,9 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newShowCmd(opts *rootOptions) *cobra.Command {
+	var outputFormat string
+	var showSecrets bool
+
 	cmd := &cobra.Command{
 		Use:               "show <host-alias>",
 		Short:             "Show detailed information for a host",
@@ -602,6 +605,27 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 			host, exists := cfg.Hosts[alias]
 			if !exists {
 				return fmt.Errorf("host %q not found", alias)
+			}
+
+			if outputFormat == "yaml" {
+				outCfg := store.PlainConfig{
+					Hosts: map[string]store.HostConfig{alias: host},
+					Users: map[string]store.UserConfig{},
+				}
+				if host.UserRef != "" {
+					if u, ok := cfg.Users[host.UserRef]; ok {
+						outCfg.Users[host.UserRef] = u
+					}
+				}
+				if !showSecrets {
+					outCfg = redactConfigForDump(outCfg)
+				}
+				out, err := yaml.Marshal(outCfg)
+				if err != nil {
+					return fmt.Errorf("marshal yaml: %w", err)
+				}
+				_, err = cmd.OutOrStdout().Write(out)
+				return err
 			}
 
 			out := cmd.OutOrStdout()
@@ -658,6 +682,8 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table|yaml)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive values (only applies to yaml output)")
 	return cmd
 }
 
