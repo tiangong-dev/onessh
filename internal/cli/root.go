@@ -67,6 +67,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newUpdateCmd(opts),
 		newRmCmd(opts),
 		newLsCmd(opts),
+		newShowCmd(opts),
 		newDumpCmd(opts),
 		newConnectCmd(opts),
 		newTestCmd(opts),
@@ -510,6 +511,88 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Filter hosts by tag")
+	return cmd
+}
+
+func newShowCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               "show <host-alias>",
+		Short:             "Show detailed information for a host",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completionHostAliases(opts),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			alias := strings.TrimSpace(args[0])
+			if alias == "" {
+				return errors.New("host alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			host, exists := cfg.Hosts[alias]
+			if !exists {
+				return fmt.Errorf("host %q not found", alias)
+			}
+
+			out := cmd.OutOrStdout()
+			port := host.Port
+			if port <= 0 {
+				port = 22
+			}
+
+			fmt.Fprintf(out, "Alias:        %s\n", alias)
+			fmt.Fprintf(out, "Host:         %s\n", host.Host)
+			fmt.Fprintf(out, "Port:         %d\n", port)
+
+			if host.UserRef != "" {
+				fmt.Fprintf(out, "User Ref:     %s\n", host.UserRef)
+				if userCfg, ok := cfg.Users[host.UserRef]; ok {
+					fmt.Fprintf(out, "User:         %s\n", userCfg.Name)
+					fmt.Fprintf(out, "Auth:         %s\n", summarizeAuth(userCfg.Auth))
+				}
+			}
+
+			if host.ProxyJump != "" {
+				fmt.Fprintf(out, "Proxy Jump:   %s\n", host.ProxyJump)
+			}
+
+			if len(host.Tags) > 0 {
+				fmt.Fprintf(out, "Tags:         %s\n", strings.Join(host.Tags, ", "))
+			}
+
+			if len(host.Env) > 0 {
+				fmt.Fprintf(out, "Env:\n")
+				keys := sortedStringMapKeys(host.Env)
+				for _, key := range keys {
+					fmt.Fprintf(out, "  %s=%s\n", key, host.Env[key])
+				}
+			}
+
+			if len(host.PreConnect) > 0 {
+				fmt.Fprintf(out, "Pre Connect:\n")
+				for _, c := range host.PreConnect {
+					fmt.Fprintf(out, "  %s\n", c)
+				}
+			}
+
+			if len(host.PostConnect) > 0 {
+				fmt.Fprintf(out, "Post Connect:\n")
+				for _, c := range host.PostConnect {
+					fmt.Fprintf(out, "  %s\n", c)
+				}
+			}
+
+			return nil
+		},
+	}
 	return cmd
 }
 
