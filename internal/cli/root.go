@@ -33,13 +33,17 @@ var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 const redactedSecretValue = "[REDACTED]"
 
 type rootOptions struct {
-	dataPath    string
-	cacheTTL    time.Duration
-	noCache     bool
-	agentSocket string
-	quiet       bool
-	noLog       bool
-	auditLog    *audit.Logger
+	dataPath           string
+	cacheTTL           time.Duration
+	noCache            bool
+	agentSocket        string
+	quiet              bool
+	noLog              bool
+	auditLogMaxSizeMB  int
+	auditLogMaxBackups int
+	auditLogMaxAge     int
+	auditLogCompress   bool
+	auditLog           *audit.Logger
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -66,16 +70,33 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")
+	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxSizeMB, "audit-log-max-size-mb", 10, "Audit log rotate max size in MB")
+	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxBackups, "audit-log-max-backups", 5, "Audit log max backup files to keep")
+	rootCmd.PersistentFlags().IntVar(&opts.auditLogMaxAge, "audit-log-max-age", 7, "Audit log max backup age in days")
+	rootCmd.PersistentFlags().BoolVar(&opts.auditLogCompress, "audit-log-compress", true, "Compress rotated audit logs")
 
-	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if opts.noLog {
-			return
+			return nil
 		}
 		repo, err := opts.repository()
 		if err != nil {
-			return
+			return err
 		}
-		opts.auditLog, _ = audit.Open(repo.Path)
+		cfg := audit.RotateConfig{
+			MaxSizeMB:  opts.auditLogMaxSizeMB,
+			MaxBackups: opts.auditLogMaxBackups,
+			MaxAgeDays: opts.auditLogMaxAge,
+			Compress:   opts.auditLogCompress,
+		}
+		if err := audit.ValidateRotateConfig(cfg); err != nil {
+			return err
+		}
+		opts.auditLog, err = audit.Open(repo.Path, cfg)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	rootCmd.PersistentPostRun = func(cmd *cobra.Command, args []string) {
 		_ = opts.auditLog.Close()
@@ -533,15 +554,15 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 					}
 					rows = append(rows, map[string]interface{}{
 						"alias":      alias,
-						"desc":      desc,
-						"host":      host.Host,
-						"user":      userName,
-						"user_ref":  userRef,
-						"auth":      authType,
-						"port":      port,
+						"desc":       desc,
+						"host":       host.Host,
+						"user":       userName,
+						"user_ref":   userRef,
+						"auth":       authType,
+						"port":       port,
 						"proxy_jump": proxyJump,
-						"tags":      tagStr,
-						"status":    status,
+						"tags":       tagStr,
+						"status":     status,
 					})
 				}
 				enc := json.NewEncoder(cmd.OutOrStdout())
@@ -2787,7 +2808,7 @@ Use alias:path to specify a remote path:
 			var localPaths []string
 			var isUpload bool
 
-		if len(args) == 2 {
+			if len(args) == 2 {
 				_, _, srcRemote := splitCpArg(args[0])
 				_, _, dstRemote := splitCpArg(args[1])
 				if srcRemote && dstRemote {
