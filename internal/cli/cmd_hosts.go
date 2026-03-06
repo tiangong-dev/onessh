@@ -645,43 +645,6 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func newDumpCmd(opts *rootOptions) *cobra.Command {
-	var showSecrets bool
-
-	cmd := &cobra.Command{
-		Use:   "dump",
-		Short: "Dump decrypted YAML to stdout",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			repo, err := opts.repository()
-			if err != nil {
-				return err
-			}
-
-			cfg, pass, err := loadConfig(opts, repo)
-			if err != nil {
-				return err
-			}
-			defer wipe(pass)
-
-			outputCfg := cfg
-			if !showSecrets {
-				outputCfg = redactConfigForDump(cfg)
-			}
-
-			out, err := yaml.Marshal(outputCfg)
-			if err != nil {
-				return fmt.Errorf("marshal yaml: %w", err)
-			}
-
-			_, err = cmd.OutOrStdout().Write(out)
-			return err
-		},
-	}
-	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive secret values in output")
-	return cmd
-}
-
 func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 	checks := []string{
 		"alias",

@@ -15,7 +15,6 @@ OneSSH is a CLI SSH manager built around a single master password. All host addr
 - `onessh show <alias>` show detailed information for a host
 - `onessh user ls / add / update / rm` manage reusable user profiles
 - `onessh sshconfig export|import` sync with `~/.ssh/config`
-- `onessh dump` print decrypted YAML (`--show-secrets` to reveal secrets)
 - `onessh logout` clear cached master password
 - `onessh agent start|stop|status` manage in-memory cache agent
 - Hosts reference reusable user profiles via `user_ref`; auth lives at the profile level
