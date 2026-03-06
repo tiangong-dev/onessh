@@ -788,6 +788,7 @@ func validateResetPath(path string) error {
 		metaFileName: {},
 		usersDirName: {},
 		hostsDirName: {},
+		"audit.log":  {},
 	}
 
 	hasMeta := false

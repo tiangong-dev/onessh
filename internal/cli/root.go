@@ -19,6 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"onessh/internal/audit"
 	"onessh/internal/store"
 
 	"github.com/manifoldco/promptui"
@@ -53,7 +54,19 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runConnect(cmd, opts, alias, sshArgs)
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			connErr := runConnect(cmd, opts, alias, sshArgs)
+			status := "ok"
+			detail := ""
+			if connErr != nil {
+				status = "error"
+				detail = connErr.Error()
+			}
+			al.Log(audit.Entry{Action: "connect", Host: alias, Detail: detail, Status: status})
+			return connErr
 		},
 	}
 
@@ -84,6 +97,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newUserCmd(opts),
 		newTagCmd(opts),
 		newLogoutCmd(opts),
+		newLogCmd(opts),
 		newVersionCmd(version, commit, date),
 	)
 
@@ -138,6 +152,12 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 			if cache.IsEnabled() {
 				_ = cache.Set(pass1)
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "init"})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ onessh configuration initialized: %s\n", repo.Path)
 			return nil
@@ -218,6 +238,12 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "host.add", Host: alias})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s added\n", alias)
 			return nil
@@ -367,9 +393,15 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
 			if targetAlias != alias {
+				al.Log(audit.Entry{Action: "host.update", Host: alias, Detail: "renamed to " + targetAlias})
 				fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s renamed to %s and updated\n", alias, targetAlias)
 			} else {
+				al.Log(audit.Entry{Action: "host.update", Host: alias})
 				fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s updated\n", alias)
 			}
 			return nil
@@ -450,6 +482,12 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "host.rm", Host: alias})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ host %s removed\n", alias)
 			return nil
@@ -735,7 +773,19 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runConnect(cmd, opts, alias, sshArgs)
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			connErr := runConnect(cmd, opts, alias, sshArgs)
+			status := "ok"
+			detail := ""
+			if connErr != nil {
+				status = "error"
+				detail = connErr.Error()
+			}
+			al.Log(audit.Entry{Action: "connect", Host: alias, Detail: detail, Status: status})
+			return connErr
 		},
 	}
 	cmd.ValidArgsFunction = completionHostAliases(opts)
@@ -940,6 +990,12 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "user.add", User: alias})
+
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s added (%s)\n", alias, cfg.Users[alias].Name)
 			return nil
 		},
@@ -1011,6 +1067,12 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "user.update", User: alias})
+
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s updated\n", alias)
 			return nil
 		},
@@ -1058,6 +1120,12 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "user.rm", User: alias})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s removed\n", alias)
 			return nil
@@ -1110,6 +1178,12 @@ func newPasswdCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "passwd"})
+
 			fmt.Fprintln(cmd.OutOrStdout(), "✔ master password updated")
 			return nil
 		},
@@ -1139,6 +1213,12 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 			if err := cache.Clear(); err != nil {
 				return fmt.Errorf("clear cache: %w", err)
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "logout"})
 
 			fmt.Fprintln(cmd.OutOrStdout(), "✔ master password cache cleared")
 			return nil
@@ -2568,6 +2648,157 @@ func (o *rootOptions) repository() (store.Repository, error) {
 	return store.Repository{Path: path}, nil
 }
 
+func (o *rootOptions) auditLogger() (*audit.Logger, error) {
+	path, err := store.ResolvePath(o.dataPath)
+	if err != nil {
+		return nil, err
+	}
+	return audit.Open(path)
+}
+
+func newLogCmd(opts *rootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "log",
+		Short: "View and manage audit log",
+		Args:  cobra.NoArgs,
+	}
+
+	cmd.AddCommand(
+		newLogLsCmd(opts),
+		newLogClearCmd(opts),
+	)
+	return cmd
+}
+
+func newLogLsCmd(opts *rootOptions) *cobra.Command {
+	var (
+		last       int
+		action     string
+		host       string
+		since      string
+		until      string
+		format     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "ls",
+		Short: "List audit log entries",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dataPath, err := store.ResolvePath(opts.dataPath)
+			if err != nil {
+				return err
+			}
+
+			filter := audit.Filter{
+				Action: action,
+				Host:   host,
+				Last:   last,
+			}
+			if since != "" {
+				t, err := time.Parse(time.RFC3339, since)
+				if err != nil {
+					return fmt.Errorf("invalid --since: %w", err)
+				}
+				filter.Since = t
+			}
+			if until != "" {
+				t, err := time.Parse(time.RFC3339, until)
+				if err != nil {
+					return fmt.Errorf("invalid --until: %w", err)
+				}
+				filter.Until = t
+			}
+			if last <= 0 {
+				filter.Last = 50
+			}
+
+			entries, err := audit.ReadEntries(dataPath, filter)
+			if err != nil {
+				return err
+			}
+
+			if len(entries) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No audit log entries found.")
+				return nil
+			}
+
+			if format == "json" {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(entries)
+			}
+
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "TIME\tACTION\tHOST\tUSER\tSTATUS\tDETAIL")
+			for _, e := range entries {
+				ts := e.Timestamp.Format("2006-01-02 15:04:05")
+				hostVal := e.Host
+				if hostVal == "" {
+					hostVal = "-"
+				}
+				userVal := e.User
+				if userVal == "" {
+					userVal = "-"
+				}
+				detailVal := e.Detail
+				if detailVal == "" {
+					detailVal = "-"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", ts, e.Action, hostVal, userVal, e.Status, detailVal)
+			}
+			_ = w.Flush()
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&last, "last", 50, "Show last N entries (0 for all)")
+	cmd.Flags().StringVar(&action, "action", "", "Filter by action (e.g. connect, host.add)")
+	cmd.Flags().StringVar(&host, "host", "", "Filter by host alias")
+	cmd.Flags().StringVar(&since, "since", "", "Show entries after timestamp (RFC3339)")
+	cmd.Flags().StringVar(&until, "until", "", "Show entries before timestamp (RFC3339)")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format (table|json)")
+	return cmd
+}
+
+func newLogClearCmd(opts *rootOptions) *cobra.Command {
+	var before string
+
+	cmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Clear audit log entries",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dataPath, err := store.ResolvePath(opts.dataPath)
+			if err != nil {
+				return err
+			}
+
+			var beforeTime time.Time
+			if before != "" {
+				beforeTime, err = time.Parse(time.RFC3339, before)
+				if err != nil {
+					return fmt.Errorf("invalid --before: %w", err)
+				}
+			}
+
+			if err := audit.ClearEntries(dataPath, beforeTime); err != nil {
+				return err
+			}
+
+			if before != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "✔ audit log entries before %s cleared\n", before)
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), "✔ audit log cleared")
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&before, "before", "", "Only clear entries before timestamp (RFC3339)")
+	return cmd
+}
+
 func currentUserName() string {
 	u, err := user.Current()
 	if err != nil {
@@ -2712,7 +2943,19 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			return executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			cpErr := executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
+			status := "ok"
+			detail := alias + ":" + remotePath
+			if cpErr != nil {
+				status = "error"
+				detail += ": " + cpErr.Error()
+			}
+			al.Log(audit.Entry{Action: "cp", Host: alias, Detail: detail, Status: status})
+			return cpErr
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
@@ -2951,7 +3194,19 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			execErr := executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
+			status := "ok"
+			detail := strings.Join(args[1:], " ")
+			if execErr != nil {
+				status = "error"
+				detail += ": " + execErr.Error()
+			}
+			al.Log(audit.Entry{Action: "exec", Host: alias, Detail: detail, Status: status})
+			return execErr
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Run command on all hosts")

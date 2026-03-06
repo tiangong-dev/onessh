@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"onessh/internal/audit"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -87,6 +88,12 @@ func newSSHConfigExportCmd(opts *rootOptions) *cobra.Command {
 			if err := writeTextFileAtomic(targetPath, []byte(next), 0o600); err != nil {
 				return err
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "sshconfig.export", Detail: targetPath})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ ssh config exported to %s\n", targetPath)
 			return nil
@@ -189,6 +196,12 @@ func newSSHConfigImportCmd(opts *rootOptions) *cobra.Command {
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
+
+			al, _ := opts.auditLogger()
+			if al != nil {
+				defer al.Close()
+			}
+			al.Log(audit.Entry{Action: "sshconfig.import", Detail: fmt.Sprintf("imported=%d updated=%d skipped=%d", imported, updated, skipped)})
 
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ imported=%d updated=%d skipped=%d\n", imported, updated, skipped)
 			return nil
