@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -2607,6 +2608,7 @@ func newCpCmd(opts *rootOptions) *cobra.Command {
 		filterTag string
 		filter    string
 		dryRun    bool
+		parallel  int
 	)
 
 	cmd := &cobra.Command{
@@ -2658,20 +2660,7 @@ Use alias:path to specify a remote path:
 					return nil
 				}
 
-				anyFailed := false
-				for _, alias := range aliases {
-					fmt.Fprintf(cmd.OutOrStdout(), "=== %s ===\n", alias)
-					host := cfg.Hosts[alias]
-					userName, auth, err := resolveHostIdentity(cfg, host)
-					if err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "SKIP %s: %v\n", alias, err)
-						continue
-					}
-					if err := executeSCP(host, userName, auth, batchRemotePath, batchLocalPaths, true, recursive, opts.agentSocket); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "FAIL %s: %v\n", alias, err)
-						anyFailed = true
-					}
-				}
+				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket)
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
@@ -2723,13 +2712,14 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			return executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket)
+			return executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Upload to hosts matching tag (batch mode)")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
+	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 1 || strings.Contains(toComplete, ":") {
 			return nil, cobra.ShellCompDirectiveDefault
@@ -2797,7 +2787,7 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 1: download from source to temp dir
 	fmt.Fprintf(os.Stderr, "Downloading from %s (%s) ...\n", srcAlias, srcHost.Host)
-	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket); err != nil {
+	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, nil, nil); err != nil {
 		return fmt.Errorf("download from %s failed: %w", srcAlias, err)
 	}
 
@@ -2816,14 +2806,20 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 2: upload from temp to destination
 	fmt.Fprintf(os.Stderr, "Uploading to %s (%s) ...\n", dstAlias, dstHost.Host)
-	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket); err != nil {
+	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, nil, nil); err != nil {
 		return fmt.Errorf("upload to %s failed: %w", dstAlias, err)
 	}
 
 	return nil
 }
 
-func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket string) error {
+func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket string, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
 	if host.Port <= 0 {
 		host.Port = 22
 	}
@@ -2887,8 +2883,8 @@ func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, r
 
 	execCmd := exec.Command(binary, args...)
 	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = os.Stdout
-	execCmd.Stderr = os.Stderr
+	execCmd.Stdout = stdout
+	execCmd.Stderr = stderr
 	execCmd.Env = env
 	if len(extraFiles) > 0 {
 		execCmd.ExtraFiles = extraFiles
@@ -2902,6 +2898,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 		filterTag string
 		filter    string
 		dryRun    bool
+		parallel  int
 	)
 
 	cmd := &cobra.Command{
@@ -2931,20 +2928,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 
-				anyFailed := false
-				for _, alias := range aliases {
-					fmt.Fprintf(cmd.OutOrStdout(), "=== %s ===\n", alias)
-					host := cfg.Hosts[alias]
-					userName, auth, err := resolveHostIdentity(cfg, host)
-					if err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "SKIP %s: %v\n", alias, err)
-						continue
-					}
-					if err := executeRemoteCmd(host, userName, auth, args, opts.agentSocket); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "FAIL %s: %v\n", alias, err)
-						anyFailed = true
-					}
-				}
+				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket)
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
@@ -2967,18 +2951,25 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket)
+			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Run command on all hosts")
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Run command on hosts matching tag")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
+	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
 }
 
-func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket string) error {
+func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket string, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
 	if host.Port <= 0 {
 		host.Port = 22
 	}
@@ -3034,8 +3025,8 @@ func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthCon
 
 	execCmd := exec.Command(binary, args...)
 	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = os.Stdout
-	execCmd.Stderr = os.Stderr
+	execCmd.Stdout = stdout
+	execCmd.Stderr = stderr
 	execCmd.Env = env
 	if len(extraFiles) > 0 {
 		execCmd.ExtraFiles = extraFiles
@@ -3050,6 +3041,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 		filterTag string
 		filter    string
 		dryRun    bool
+		parallel  int
 	)
 
 	cmd := &cobra.Command{
@@ -3078,21 +3070,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 
-				anyFailed := false
-				for _, alias := range aliases {
-					host := cfg.Hosts[alias]
-					userName, auth, err := resolveHostIdentity(cfg, host)
-					if err != nil {
-						fmt.Fprintf(cmd.OutOrStdout(), "%-20s  SKIP  (%v)\n", alias, err)
-						continue
-					}
-					if err := runSSHTest(host, userName, auth, timeout, opts.agentSocket); err != nil {
-						fmt.Fprintf(cmd.OutOrStdout(), "%-20s  FAIL\n", alias)
-						anyFailed = true
-					} else {
-						fmt.Fprintf(cmd.OutOrStdout(), "%-20s  OK\n", alias)
-					}
-				}
+				anyFailed := runBatchTest(cmd, cfg, aliases, timeout, parallel, opts.agentSocket)
 				if anyFailed {
 					return errors.New("one or more hosts failed connectivity check")
 				}
@@ -3123,8 +3101,158 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Test hosts matching tag")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
+	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
+}
+
+func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket string) bool {
+	type result struct {
+		skip bool
+		err  error
+	}
+	results := make([]result, len(aliases))
+	sem := make(chan struct{}, max(1, parallel))
+	var wg sync.WaitGroup
+	for i, alias := range aliases {
+		wg.Add(1)
+		go func(i int, alias string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			host := cfg.Hosts[alias]
+			userName, auth, err := resolveHostIdentity(cfg, host)
+			if err != nil {
+				results[i] = result{skip: true, err: err}
+				return
+			}
+			results[i] = result{err: runSSHTest(host, userName, auth, timeout, agentSocket)}
+		}(i, alias)
+	}
+	wg.Wait()
+
+	anyFailed := false
+	out := cmd.OutOrStdout()
+	for i, alias := range aliases {
+		r := results[i]
+		if r.skip {
+			fmt.Fprintf(out, "%-20s  SKIP  (%v)\n", alias, r.err)
+			continue
+		}
+		if r.err != nil {
+			fmt.Fprintf(out, "%-20s  FAIL\n", alias)
+			anyFailed = true
+		} else {
+			fmt.Fprintf(out, "%-20s  OK\n", alias)
+		}
+	}
+	return anyFailed
+}
+
+func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket string) bool {
+	type result struct {
+		skip   bool
+		err    error
+		stdout []byte
+		stderr []byte
+	}
+	results := make([]result, len(aliases))
+	sem := make(chan struct{}, max(1, parallel))
+	var wg sync.WaitGroup
+	for i, alias := range aliases {
+		wg.Add(1)
+		go func(i int, alias string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			host := cfg.Hosts[alias]
+			userName, auth, err := resolveHostIdentity(cfg, host)
+			if err != nil {
+				results[i] = result{skip: true, err: err}
+				return
+			}
+			var outBuf, errBuf bytes.Buffer
+			err = executeRemoteCmd(host, userName, auth, remoteCmd, agentSocket, &outBuf, &errBuf)
+			results[i] = result{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+		}(i, alias)
+	}
+	wg.Wait()
+
+	anyFailed := false
+	out := cmd.OutOrStdout()
+	errOut := cmd.ErrOrStderr()
+	for i, alias := range aliases {
+		r := results[i]
+		if r.skip {
+			fmt.Fprintf(errOut, "SKIP %s: %v\n", alias, r.err)
+			continue
+		}
+		fmt.Fprintf(out, "=== %s ===\n", alias)
+		if len(r.stdout) > 0 {
+			out.Write(r.stdout)
+		}
+		if len(r.stderr) > 0 {
+			errOut.Write(r.stderr)
+		}
+		if r.err != nil {
+			fmt.Fprintf(errOut, "FAIL %s: %v\n", alias, r.err)
+			anyFailed = true
+		}
+	}
+	return anyFailed
+}
+
+func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket string) bool {
+	type result struct {
+		skip   bool
+		err    error
+		stdout []byte
+		stderr []byte
+	}
+	results := make([]result, len(aliases))
+	sem := make(chan struct{}, max(1, parallel))
+	var wg sync.WaitGroup
+	for i, alias := range aliases {
+		wg.Add(1)
+		go func(i int, alias string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			host := cfg.Hosts[alias]
+			userName, auth, err := resolveHostIdentity(cfg, host)
+			if err != nil {
+				results[i] = result{skip: true, err: err}
+				return
+			}
+			var outBuf, errBuf bytes.Buffer
+			err = executeSCP(host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, &outBuf, &errBuf)
+			results[i] = result{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+		}(i, alias)
+	}
+	wg.Wait()
+
+	anyFailed := false
+	out := cmd.OutOrStdout()
+	errOut := cmd.ErrOrStderr()
+	for i, alias := range aliases {
+		r := results[i]
+		if r.skip {
+			fmt.Fprintf(errOut, "SKIP %s: %v\n", alias, r.err)
+			continue
+		}
+		fmt.Fprintf(out, "=== %s ===\n", alias)
+		if len(r.stdout) > 0 {
+			out.Write(r.stdout)
+		}
+		if len(r.stderr) > 0 {
+			errOut.Write(r.stderr)
+		}
+		if r.err != nil {
+			fmt.Fprintf(errOut, "FAIL %s: %v\n", alias, r.err)
+			anyFailed = true
+		}
+	}
+	return anyFailed
 }
 
 func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket string) error {
