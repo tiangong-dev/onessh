@@ -35,6 +35,7 @@ type rootOptions struct {
 	cacheTTL    time.Duration
 	noCache     bool
 	agentSocket string
+	quiet       bool
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -59,6 +60,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
+	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
 
 	rootCmd.ValidArgsFunction = completionHostAliases(opts)
 
@@ -1152,7 +1154,9 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	if userName != "" {
 		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
+	if !opts.quiet {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
+	}
 	return executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket)
 }
 
