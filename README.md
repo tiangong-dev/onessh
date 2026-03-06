@@ -14,7 +14,6 @@ OneSSH is a CLI SSH manager built around a single master password. All host addr
 - `onessh ls [--tag <tag>] [--filter <glob>]` list hosts with summary; filter by tag or glob pattern
 - `onessh show <alias>` show detailed information for a host
 - `onessh user ls / add / update / rm` manage reusable user profiles
-- `onessh sshconfig export|import` sync with `~/.ssh/config`
 - `onessh logout` clear cached master password
 - `onessh agent start|stop|status` manage in-memory cache agent
 - Hosts reference reusable user profiles via `user_ref`; auth lives at the profile level
@@ -208,18 +207,6 @@ onessh ls --tag prod --filter "cn-*"
 
 - `pre_connect` runs first, then an interactive shell starts, then `post_connect` runs after the shell exits.
 - To jump directly into a root shell: `--pre-connect "exec sudo su -"`.
-
-### SSH config interop
-
-```bash
-onessh sshconfig export
-onessh sshconfig export --stdout
-onessh sshconfig import
-onessh sshconfig import --overwrite
-```
-
-- `export` writes a managed block into `~/.ssh/config`.
-- `import` reads compatible `Host` entries (wildcards are ignored).
 
 ## Configuration
 
