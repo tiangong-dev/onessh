@@ -66,6 +66,7 @@ type hostDoc struct {
 	UserRef     string            `yaml:"user_ref"`
 	Port        int               `yaml:"port"`
 	ProxyJump   string            `yaml:"proxy_jump,omitempty"`
+	Tags        []string          `yaml:"tags,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 	PreConnect  []string          `yaml:"pre_connect,omitempty"`
 	PostConnect []string          `yaml:"post_connect,omitempty"`
@@ -426,6 +427,7 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 			UserRef:     strings.TrimSpace(doc.UserRef),
 			Port:        doc.Port,
 			ProxyJump:   strings.TrimSpace(doc.ProxyJump),
+			Tags:        doc.Tags,
 			Env:         map[string]string{},
 			PreConnect:  make([]string, 0, len(doc.PreConnect)),
 			PostConnect: make([]string, 0, len(doc.PostConnect)),
@@ -571,6 +573,7 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 			UserRef:     strings.TrimSpace(hostCfg.UserRef),
 			Port:        hostCfg.Port,
 			ProxyJump:   strings.TrimSpace(hostCfg.ProxyJump),
+			Tags:        hostCfg.Tags,
 			Env:         map[string]string{},
 			PreConnect:  make([]string, 0, len(hostCfg.PreConnect)),
 			PostConnect: make([]string, 0, len(hostCfg.PostConnect)),

@@ -27,6 +27,7 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 		Host:        "1.2.3.4",
 		UserRef:     "ops",
 		Port:        22,
+		Tags:        []string{"prod", "cn"},
 		Env:         map[string]string{"AWS_PROFILE": "prod"},
 		PreConnect:  []string{"cd /srv/app"},
 		PostConnect: []string{"echo disconnected"},

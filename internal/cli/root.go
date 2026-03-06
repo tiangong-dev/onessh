@@ -2512,16 +2512,16 @@ func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, r
 }
 
 func newExecCmd(opts *rootOptions) *cobra.Command {
+	var (
+		all       bool
+		filterTag string
+	)
+
 	cmd := &cobra.Command{
 		Use:   "exec <host-alias> <command> [args...]",
 		Short: "Run a command on a remote host non-interactively",
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			alias := strings.TrimSpace(args[0])
-			if alias == "" {
-				return errors.New("host alias cannot be empty")
-			}
-
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -2531,6 +2531,48 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 			defer wipe(pass)
+
+			if all || filterTag != "" {
+				aliases := make([]string, 0, len(cfg.Hosts))
+				for alias := range cfg.Hosts {
+					if filterTag != "" && !hostHasTag(cfg.Hosts[alias], filterTag) {
+						continue
+					}
+					aliases = append(aliases, alias)
+				}
+				sort.Strings(aliases)
+
+				if len(aliases) == 0 {
+					return errors.New("no matching hosts found")
+				}
+
+				anyFailed := false
+				for _, alias := range aliases {
+					fmt.Fprintf(cmd.OutOrStdout(), "=== %s ===\n", alias)
+					host := cfg.Hosts[alias]
+					userName, auth, err := resolveHostIdentity(cfg, host)
+					if err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "SKIP %s: %v\n", alias, err)
+						continue
+					}
+					if err := executeRemoteCmd(host, userName, auth, args, opts.agentSocket); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "FAIL %s: %v\n", alias, err)
+						anyFailed = true
+					}
+				}
+				if anyFailed {
+					return errors.New("one or more hosts failed")
+				}
+				return nil
+			}
+
+			if len(args) < 2 {
+				return errors.New("usage: onessh exec <host-alias> <command> [args...]")
+			}
+			alias := strings.TrimSpace(args[0])
+			if alias == "" {
+				return errors.New("host alias cannot be empty")
+			}
 
 			target, exists := cfg.Hosts[alias]
 			if !exists {
@@ -2543,6 +2585,8 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			return executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket)
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "Run command on all hosts")
+	cmd.Flags().StringVar(&filterTag, "tag", "", "Run command on hosts matching tag")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
 }
