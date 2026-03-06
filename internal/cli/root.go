@@ -2478,14 +2478,15 @@ func newCpCmd(opts *rootOptions) *cobra.Command {
 	var recursive bool
 
 	cmd := &cobra.Command{
-		Use:   "cp <src> <dst>",
+		Use:   "cp <src>... <dst>",
 		Short: "Copy files to/from a remote host (alias:path notation)",
 		Long: `Copy files between local and remote hosts using scp.
 
 Use alias:path to specify a remote path:
-  onessh cp web1:/etc/hosts ./hosts       # download
-  onessh cp ./deploy.sh web1:/tmp/        # upload`,
-		Args: cobra.ExactArgs(2),
+  onessh cp web1:/etc/hosts ./hosts              # download
+  onessh cp ./deploy.sh web1:/tmp/               # upload
+  onessh cp file1.txt file2.txt web1:/tmp/       # multi-file upload`,
+		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := opts.repository()
 			if err != nil {
@@ -2497,10 +2498,37 @@ Use alias:path to specify a remote path:
 			}
 			defer wipe(pass)
 
-			alias, remotePath, isUpload, err := parseCpArgs(args[0], args[1])
-			if err != nil {
-				return err
+			var alias, remotePath string
+			var localPaths []string
+			var isUpload bool
+
+			if len(args) == 2 {
+				alias, remotePath, isUpload, err = parseCpArgs(args[0], args[1])
+				if err != nil {
+					return err
+				}
+				if isUpload {
+					localPaths = []string{args[0]}
+				} else {
+					localPaths = []string{args[1]}
+				}
+			} else {
+				lastArg := args[len(args)-1]
+				dstAlias, dstPath, ok := splitCpArg(lastArg)
+				if !ok {
+					return errors.New("with multiple sources, the last argument must be a remote path (alias:path)")
+				}
+				for _, p := range args[:len(args)-1] {
+					if _, _, hasAlias := splitCpArg(p); hasAlias {
+						return errors.New("with multiple sources, only the last argument can be a remote path")
+					}
+				}
+				alias = dstAlias
+				remotePath = dstPath
+				localPaths = args[:len(args)-1]
+				isUpload = true
 			}
+
 			target, exists := cfg.Hosts[alias]
 			if !exists {
 				return fmt.Errorf("host %q not found", alias)
@@ -2509,7 +2537,7 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			return executeSCP(target, userName, auth, remotePath, args[0], args[1], isUpload, recursive, opts.agentSocket)
+			return executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket)
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
@@ -2550,7 +2578,7 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 	return arg[:idx], arg[idx+1:], true
 }
 
-func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath, srcArg, dstArg string, isUpload, recursive bool, agentSocket string) error {
+func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket string) error {
 	if host.Port <= 0 {
 		host.Port = 22
 	}
@@ -2580,10 +2608,12 @@ func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, r
 	if userName != "" {
 		destination = fmt.Sprintf("%s@%s", userName, host.Host)
 	}
+	remote := destination + ":" + remotePath
 	if isUpload {
-		args = append(args, srcArg, destination+":"+remotePath)
+		args = append(args, localPaths...)
+		args = append(args, remote)
 	} else {
-		args = append(args, destination+":"+remotePath, dstArg)
+		args = append(args, remote, localPaths[0])
 	}
 
 	binary := "scp"
