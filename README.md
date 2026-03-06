@@ -11,7 +11,8 @@ OneSSH is a CLI SSH manager built around a single master password. All host addr
 - `onessh add <alias>` add a host (interactive or with flags)
 - `onessh update <alias>` update a host
 - `onessh rm <alias>` remove a host
-- `onessh ls [--tag <tag>]` list hosts with summary; filter by tag
+- `onessh ls [--tag <tag>] [--filter <glob>]` list hosts with summary; filter by tag or glob pattern
+- `onessh show <alias>` show detailed information for a host
 - `onessh user ls / add / update / rm` manage reusable user profiles
 - `onessh sshconfig export|import` sync with `~/.ssh/config`
 - `onessh dump` print decrypted YAML (`--show-secrets` to reveal secrets)
@@ -25,8 +26,10 @@ OneSSH is a CLI SSH manager built around a single master password. All host addr
 
 - `onessh <alias> [-- <ssh-args...>]` or `onessh connect <alias>` connect interactively (SSH argument passthrough supported)
 - `onessh exec <alias> <command> [args...]` run a command non-interactively; stdout/stderr piped through
-- `onessh cp <src> <dst>` copy files via scp using `alias:path` notation
-- `onessh test [<alias>]` check SSH connectivity; `--all` to test every host
+- `onessh exec --tag <tag> <command>` batch exec on hosts matching tag
+- `onessh cp <src>... <dst>` copy files via scp using `alias:path` notation; supports multi-file upload and remote-to-remote
+- `onessh cp --tag <tag> <files>... :/path` batch upload to hosts matching tag
+- `onessh test [<alias>]` check SSH connectivity; `--all`, `--tag`, `--filter` for batch testing
 - `onessh completion bash|zsh|fish|powershell` shell completion (tab-completes host aliases)
 - `onessh version` print version/build info
 
@@ -102,7 +105,9 @@ onessh exec web1 -- bash -c "cd /srv && ls"
 ```bash
 onessh cp web1:/etc/hosts ./hosts          # download
 onessh cp ./deploy.sh web1:/tmp/           # upload
+onessh cp file1 file2 web1:/tmp/           # multi-file upload
 onessh cp -r web1:/var/log/app ./logs      # recursive download
+onessh cp web1:/etc/hosts web2:/tmp/       # remote-to-remote
 ```
 
 ### Test connectivity
@@ -111,6 +116,59 @@ onessh cp -r web1:/var/log/app ./logs      # recursive download
 onessh test web1
 onessh test --all
 onessh test --all --timeout 3
+```
+
+### Show host details
+
+```bash
+onessh show web1
+```
+
+## Batch Operations
+
+Commands that operate on remote hosts support batch execution via `--all`, `--tag`, and `--filter`.
+
+### `--filter` glob pattern
+
+`--filter` accepts a glob pattern (Go `filepath.Match` syntax) that matches against host alias, host address, or description (OR logic — match any).
+
+Supported wildcards:
+
+- `*` matches any sequence of characters
+- `?` matches a single character
+- `[abc]` matches one character in the set
+- `[a-z]` matches one character in the range
+
+Note: this is **full-string matching**, not substring. Use `*substr*` for substring matching.
+
+### Examples
+
+```bash
+# exec on multiple hosts
+onessh exec --all uptime
+onessh exec --tag prod uptime
+onessh exec --filter "web*" -- df -h /
+onessh exec --tag prod --filter "cn-*" uptime    # tag AND filter combined
+
+# test connectivity
+onessh test --all
+onessh test --tag prod
+onessh test --filter "192.168.*"
+
+# batch upload
+onessh cp --tag prod deploy.sh :/tmp/
+onessh cp --filter "web*" app.conf :/etc/app/
+onessh cp --tag prod -r dist/ :/srv/app/
+```
+
+### Dry run
+
+Add `--dry-run` to preview matched hosts without executing the operation:
+
+```bash
+onessh exec --tag prod --dry-run uptime
+onessh cp --filter "web*" --dry-run app.conf :/etc/app/
+onessh test --all --dry-run
 ```
 
 ## Host Management
@@ -144,6 +202,8 @@ onessh update ais --clear-tags
 ```bash
 onessh ls
 onessh ls --tag prod
+onessh ls --filter "web*"
+onessh ls --tag prod --filter "cn-*"
 ```
 
 ### Hook behavior

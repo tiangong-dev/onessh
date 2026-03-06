@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -453,7 +454,10 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newLsCmd(opts *rootOptions) *cobra.Command {
-	var filterTag string
+	var (
+		filterTag string
+		filter    string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "ls",
@@ -471,14 +475,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			aliases := make([]string, 0, len(cfg.Hosts))
-			for alias := range cfg.Hosts {
-				if filterTag != "" && !hostHasTag(cfg.Hosts[alias], filterTag) {
-					continue
-				}
-				aliases = append(aliases, alias)
-			}
-			sort.Strings(aliases)
+			aliases := collectFilteredHosts(cfg, filterTag, filter)
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "ALIAS\tDESC\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
@@ -526,6 +523,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Filter hosts by tag")
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	return cmd
 }
 
@@ -2475,7 +2473,12 @@ func expandTilde(input string) (string, error) {
 }
 
 func newCpCmd(opts *rootOptions) *cobra.Command {
-	var recursive bool
+	var (
+		recursive bool
+		filterTag string
+		filter    string
+		dryRun    bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "cp <src>... <dst>",
@@ -2485,7 +2488,10 @@ func newCpCmd(opts *rootOptions) *cobra.Command {
 Use alias:path to specify a remote path:
   onessh cp web1:/etc/hosts ./hosts              # download
   onessh cp ./deploy.sh web1:/tmp/               # upload
-  onessh cp file1.txt file2.txt web1:/tmp/       # multi-file upload`,
+  onessh cp file1.txt file2.txt web1:/tmp/       # multi-file upload
+  onessh cp web1:/var/log/app.log web2:/tmp/     # remote-to-remote
+  onessh cp --tag prod deploy.sh :/tmp/          # batch upload to tagged hosts
+  onessh cp --filter "web*" app.conf :/etc/app/  # batch upload to filtered hosts`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := opts.repository()
@@ -2498,11 +2504,62 @@ Use alias:path to specify a remote path:
 			}
 			defer wipe(pass)
 
+			// Batch upload mode: --tag or --filter
+			if filterTag != "" || filter != "" {
+				lastArg := args[len(args)-1]
+				if !strings.HasPrefix(lastArg, ":") {
+					return errors.New("in batch mode, destination must be a remote path (:/path)")
+				}
+				batchRemotePath := lastArg[1:]
+				batchLocalPaths := args[:len(args)-1]
+				for _, p := range batchLocalPaths {
+					if _, _, ok := splitCpArg(p); ok {
+						return errors.New("in batch mode, sources must be local paths")
+					}
+				}
+
+				aliases := collectFilteredHosts(cfg, filterTag, filter)
+				if len(aliases) == 0 {
+					return errors.New("no matching hosts found")
+				}
+
+				if dryRun {
+					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
+					fmt.Fprintf(cmd.OutOrStdout(), "Upload: %s -> :%s\n", strings.Join(batchLocalPaths, ", "), batchRemotePath)
+					return nil
+				}
+
+				anyFailed := false
+				for _, alias := range aliases {
+					fmt.Fprintf(cmd.OutOrStdout(), "=== %s ===\n", alias)
+					host := cfg.Hosts[alias]
+					userName, auth, err := resolveHostIdentity(cfg, host)
+					if err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "SKIP %s: %v\n", alias, err)
+						continue
+					}
+					if err := executeSCP(host, userName, auth, batchRemotePath, batchLocalPaths, true, recursive, opts.agentSocket); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "FAIL %s: %v\n", alias, err)
+						anyFailed = true
+					}
+				}
+				if anyFailed {
+					return errors.New("one or more hosts failed")
+				}
+				return nil
+			}
+
 			var alias, remotePath string
 			var localPaths []string
 			var isUpload bool
 
-			if len(args) == 2 {
+		if len(args) == 2 {
+				_, _, srcRemote := splitCpArg(args[0])
+				_, _, dstRemote := splitCpArg(args[1])
+				if srcRemote && dstRemote {
+					return executeRemoteToRemoteCopy(cfg, args[0], args[1], recursive, opts.agentSocket)
+				}
+
 				alias, remotePath, isUpload, err = parseCpArgs(args[0], args[1])
 				if err != nil {
 					return err
@@ -2541,6 +2598,9 @@ Use alias:path to specify a remote path:
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
+	cmd.Flags().StringVar(&filterTag, "tag", "", "Upload to hosts matching tag (batch mode)")
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
 	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 1 || strings.Contains(toComplete, ":") {
 			return nil, cobra.ShellCompDirectiveDefault
@@ -2576,6 +2636,62 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 		return "", "", false
 	}
 	return arg[:idx], arg[idx+1:], true
+}
+
+func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket string) error {
+	srcAlias, srcPath, _ := splitCpArg(srcArg)
+	dstAlias, dstPath, _ := splitCpArg(dstArg)
+
+	srcHost, ok := cfg.Hosts[srcAlias]
+	if !ok {
+		return fmt.Errorf("host %q not found", srcAlias)
+	}
+	dstHost, ok := cfg.Hosts[dstAlias]
+	if !ok {
+		return fmt.Errorf("host %q not found", dstAlias)
+	}
+
+	srcUser, srcAuth, err := resolveHostIdentity(cfg, srcHost)
+	if err != nil {
+		return fmt.Errorf("resolve source host identity: %w", err)
+	}
+	dstUser, dstAuth, err := resolveHostIdentity(cfg, dstHost)
+	if err != nil {
+		return fmt.Errorf("resolve destination host identity: %w", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "onessh-cp-*")
+	if err != nil {
+		return fmt.Errorf("create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Step 1: download from source to temp dir
+	fmt.Fprintf(os.Stderr, "Downloading from %s (%s) ...\n", srcAlias, srcHost.Host)
+	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket); err != nil {
+		return fmt.Errorf("download from %s failed: %w", srcAlias, err)
+	}
+
+	// Collect downloaded files
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return fmt.Errorf("read temp directory: %w", err)
+	}
+	if len(entries) == 0 {
+		return errors.New("no files were downloaded from source")
+	}
+	var localPaths []string
+	for _, e := range entries {
+		localPaths = append(localPaths, filepath.Join(tmpDir, e.Name()))
+	}
+
+	// Step 2: upload from temp to destination
+	fmt.Fprintf(os.Stderr, "Uploading to %s (%s) ...\n", dstAlias, dstHost.Host)
+	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket); err != nil {
+		return fmt.Errorf("upload to %s failed: %w", dstAlias, err)
+	}
+
+	return nil
 }
 
 func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket string) error {
@@ -2655,6 +2771,8 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	var (
 		all       bool
 		filterTag string
+		filter    string
+		dryRun    bool
 	)
 
 	cmd := &cobra.Command{
@@ -2672,18 +2790,16 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			if all || filterTag != "" {
-				aliases := make([]string, 0, len(cfg.Hosts))
-				for alias := range cfg.Hosts {
-					if filterTag != "" && !hostHasTag(cfg.Hosts[alias], filterTag) {
-						continue
-					}
-					aliases = append(aliases, alias)
-				}
-				sort.Strings(aliases)
-
+			if all || filterTag != "" || filter != "" {
+				aliases := collectFilteredHosts(cfg, filterTag, filter)
 				if len(aliases) == 0 {
 					return errors.New("no matching hosts found")
+				}
+
+				if dryRun {
+					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
+					fmt.Fprintf(cmd.OutOrStdout(), "Command: %s\n", strings.Join(args, " "))
+					return nil
 				}
 
 				anyFailed := false
@@ -2727,6 +2843,8 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Run command on all hosts")
 	cmd.Flags().StringVar(&filterTag, "tag", "", "Run command on hosts matching tag")
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
 }
@@ -2797,8 +2915,13 @@ func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthCon
 }
 
 func newTestCmd(opts *rootOptions) *cobra.Command {
-	var all bool
-	var timeout int
+	var (
+		all       bool
+		timeout   int
+		filterTag string
+		filter    string
+		dryRun    bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "test [<host-alias>]",
@@ -2815,12 +2938,16 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			if all {
-				aliases := make([]string, 0, len(cfg.Hosts))
-				for alias := range cfg.Hosts {
-					aliases = append(aliases, alias)
+			if all || filterTag != "" || filter != "" {
+				aliases := collectFilteredHosts(cfg, filterTag, filter)
+				if len(aliases) == 0 {
+					return errors.New("no matching hosts found")
 				}
-				sort.Strings(aliases)
+
+				if dryRun {
+					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
+					return nil
+				}
 
 				anyFailed := false
 				for _, alias := range aliases {
@@ -2844,7 +2971,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 			}
 
 			if len(args) == 0 {
-				return errors.New("specify <host-alias> or use --all")
+				return errors.New("specify <host-alias> or use --all/--tag/--filter")
 			}
 			alias := strings.TrimSpace(args[0])
 			target, exists := cfg.Hosts[alias]
@@ -2864,6 +2991,9 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Test all hosts")
 	cmd.Flags().IntVar(&timeout, "timeout", 5, "Connection timeout in seconds")
+	cmd.Flags().StringVar(&filterTag, "tag", "", "Test hosts matching tag")
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
 }
@@ -2982,6 +3112,53 @@ func hostHasTag(host store.HostConfig, tag string) bool {
 	tag = strings.ToLower(strings.TrimSpace(tag))
 	for _, t := range host.Tags {
 		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) {
+	fmt.Fprintf(out, "Matched %d host(s):\n", len(aliases))
+	for _, alias := range aliases {
+		host := cfg.Hosts[alias]
+		port := host.Port
+		if port <= 0 {
+			port = 22
+		}
+		userName, _, err := resolveHostIdentity(cfg, host)
+		if err != nil {
+			fmt.Fprintf(out, "  %-20s %s (SKIP: %v)\n", alias, host.Host, err)
+		} else {
+			fmt.Fprintf(out, "  %-20s %s@%s:%d\n", alias, userName, host.Host, port)
+		}
+	}
+}
+
+func collectFilteredHosts(cfg store.PlainConfig, tag, filter string) []string {
+	aliases := make([]string, 0, len(cfg.Hosts))
+	for alias := range cfg.Hosts {
+		if tag != "" && !hostHasTag(cfg.Hosts[alias], tag) {
+			continue
+		}
+		if filter != "" && !matchHostFilter(alias, cfg.Hosts[alias], filter) {
+			continue
+		}
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return aliases
+}
+
+func matchHostFilter(alias string, host store.HostConfig, pattern string) bool {
+	if matched, _ := filepath.Match(pattern, alias); matched {
+		return true
+	}
+	if matched, _ := filepath.Match(pattern, host.Host); matched {
+		return true
+	}
+	if host.Description != "" {
+		if matched, _ := filepath.Match(pattern, host.Description); matched {
 			return true
 		}
 	}
