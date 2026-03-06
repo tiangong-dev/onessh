@@ -148,6 +148,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 		preConnect  []string
 		postConnect []string
 		tags        []string
+		description string
 	)
 
 	cmd := &cobra.Command{
@@ -203,6 +204,9 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 			if cmd.Flags().Changed("tag") {
 				newHost.Tags = normalizeTags(tags)
 			}
+			if cmd.Flags().Changed("description") {
+				newHost.Description = strings.TrimSpace(description)
+			}
 			cfg.Hosts[alias] = newHost
 
 			if err := repo.Save(cfg, pass); err != nil {
@@ -217,6 +221,7 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&preConnect, "pre-connect", nil, "Remote command run before interactive shell, repeatable")
 	cmd.Flags().StringArrayVar(&postConnect, "post-connect", nil, "Remote command run after interactive shell exits, repeatable")
 	cmd.Flags().StringArrayVar(&tags, "tag", nil, "Tag to assign to host, repeatable")
+	cmd.Flags().StringVar(&description, "description", "", "Host description")
 	return cmd
 }
 
@@ -241,6 +246,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 		tags         []string
 		unsetTags    []string
 		clearTags    bool
+		descFlag     string
 	)
 
 	cmd := &cobra.Command{
@@ -294,6 +300,9 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				}
 				if cmd.Flags().Changed("proxy-jump") {
 					updatedHost.ProxyJump = strings.TrimSpace(proxyJump)
+				}
+				if cmd.Flags().Changed("description") {
+					updatedHost.Description = strings.TrimSpace(descFlag)
 				}
 				if err := applyHostEnvUpdateFlags(cmd, &updatedHost, envFlags, unsetEnv, clearEnv); err != nil {
 					return err
@@ -379,6 +388,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&tags, "tag", nil, "Add tag to host, repeatable")
 	cmd.Flags().StringArrayVar(&unsetTags, "untag", nil, "Remove tag from host, repeatable")
 	cmd.Flags().BoolVar(&clearTags, "clear-tags", false, "Remove all tags")
+	cmd.Flags().StringVar(&descFlag, "description", "", "Update host description")
 	return cmd
 }
 
@@ -471,7 +481,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 			sort.Strings(aliases)
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ALIAS\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
+			fmt.Fprintln(w, "ALIAS\tDESC\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
 			for _, alias := range aliases {
 				host := cfg.Hosts[alias]
 				userName, authType, status := summarizeHostIdentityForList(cfg, host)
@@ -491,10 +501,15 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 				if len(host.Tags) > 0 {
 					tagStr = strings.Join(host.Tags, ",")
 				}
+				desc := "-"
+				if host.Description != "" {
+					desc = host.Description
+				}
 				fmt.Fprintf(
 					w,
-					"%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
+					"%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
 					alias,
+					desc,
 					host.Host,
 					userName,
 					userRef,
@@ -550,6 +565,9 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 
 			fmt.Fprintf(out, "Alias:        %s\n", alias)
 			fmt.Fprintf(out, "Host:         %s\n", host.Host)
+			if host.Description != "" {
+				fmt.Fprintf(out, "Description:  %s\n", host.Description)
+			}
 			fmt.Fprintf(out, "Port:         %d\n", port)
 
 			if host.UserRef != "" {
@@ -1375,6 +1393,7 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 		"host",
 		"port",
 		"proxy-jump",
+		"description",
 		"env",
 		"unset-env",
 		"clear-env",
@@ -1670,6 +1689,7 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 	defaultHost := ""
 	defaultPort := 22
 	defaultProxyJump := ""
+	defaultDescription := ""
 	defaultEnv := map[string]string{}
 	defaultPreConnect := []string{}
 	defaultPostConnect := []string{}
@@ -1692,6 +1712,7 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		defaultEnv = existing.Env
 		defaultPreConnect = cloneStringSlice(existing.PreConnect)
 		defaultPostConnect = cloneStringSlice(existing.PostConnect)
+		defaultDescription = existing.Description
 	}
 
 	host, err := promptNonEmpty(inputReader, "Host IP/Domain", defaultHost)
@@ -1726,8 +1747,14 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		return store.HostConfig{}, err
 	}
 
+	description, err := promptOptional(inputReader, "Description", defaultDescription)
+	if err != nil {
+		return store.HostConfig{}, err
+	}
+
 	return store.HostConfig{
 		Host:        host,
+		Description: strings.TrimSpace(description),
 		UserRef:     userRef,
 		Port:        port,
 		ProxyJump:   proxyJump,

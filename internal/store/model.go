@@ -8,6 +8,7 @@ type AuthConfig struct {
 
 type HostConfig struct {
 	Host        string            `yaml:"host"`
+	Description string            `yaml:"description,omitempty"`
 	UserRef     string            `yaml:"user_ref"`
 	Port        int               `yaml:"port"`
 	ProxyJump   string            `yaml:"proxy_jump,omitempty"`

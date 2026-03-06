@@ -63,6 +63,7 @@ type userDoc struct {
 type hostDoc struct {
 	Version     int               `yaml:"version"`
 	Host        string            `yaml:"host"`
+	Description string            `yaml:"description,omitempty"`
 	UserRef     string            `yaml:"user_ref"`
 	Port        int               `yaml:"port"`
 	ProxyJump   string            `yaml:"proxy_jump,omitempty"`
@@ -424,6 +425,7 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 
 		hostCfg := HostConfig{
 			Host:        strings.TrimSpace(hostValue),
+			Description: strings.TrimSpace(doc.Description),
 			UserRef:     strings.TrimSpace(doc.UserRef),
 			Port:        doc.Port,
 			ProxyJump:   strings.TrimSpace(doc.ProxyJump),
@@ -570,6 +572,7 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 
 		doc := hostDoc{
 			Version:     docVersion,
+			Description: strings.TrimSpace(hostCfg.Description),
 			UserRef:     strings.TrimSpace(hostCfg.UserRef),
 			Port:        hostCfg.Port,
 			ProxyJump:   strings.TrimSpace(hostCfg.ProxyJump),

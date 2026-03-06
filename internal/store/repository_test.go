@@ -25,6 +25,7 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 	}
 	source.Hosts["web1"] = HostConfig{
 		Host:        "1.2.3.4",
+		Description: "Production web server",
 		UserRef:     "ops",
 		Port:        22,
 		Tags:        []string{"prod", "cn"},
