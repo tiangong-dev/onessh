@@ -226,10 +226,6 @@ Override options:
 - CLI flag: `--no-cache` to disable cache
 - CLI flag: `--agent-socket /path/to/agent.sock`
 - Environment variable: `ONESSH_AGENT_SOCKET` (fallback: `SHUSH_SOCKET`)
-- Environment variable: `ONESSH_AGENT_DIAL_TIMEOUT_MS` (optional agent dial timeout in milliseconds)
-- Environment variable: `ONESSH_AGENT_REQUEST_TIMEOUT_MS` (optional agent request timeout in milliseconds)
-- Environment variable: `ONESSH_AGENT_STARTUP_TIMEOUT_MS` (optional agent startup timeout in milliseconds)
-- Environment variable: `ONESSH_AGENT_STARTUP_PROBE_INTERVAL_MS` (optional agent startup probe interval in milliseconds)
 
 Memory backend behavior:
 
