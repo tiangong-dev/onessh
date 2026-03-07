@@ -30,7 +30,7 @@ This blocks malicious metadata from forcing extreme resource usage.
 - Cache storage: in-memory map with TTL per config path.
 - Access control: Unix socket peer UID must match agent process UID.
 - Optional hardening: capability token can be required on every IPC request.
-- Default isolation: when not explicitly configured, socket path and capability are auto-derived per shell session/window.
+- Default isolation: when not explicitly configured, socket path and capability are auto-derived from parent shell PID.
 
 ### Flow
 

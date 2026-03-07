@@ -17,7 +17,6 @@ const (
 	defaultCacheTTL            = 10 * time.Minute
 	passphraseCacheKeyPrefixV1 = "onessh:passphrase:v1:"
 	onesshAgentCapabilityEnv   = "ONESSH_AGENT_CAPABILITY"
-	onesshAgentSessionEnv      = "ONESSH_AGENT_SESSION"
 )
 
 type passphraseStore interface {
@@ -54,29 +53,21 @@ func resolveAgentCapability(explicit string) string {
 	if fromEnv := defaultAgentCapabilityFlagValue(); fromEnv != "" {
 		return fromEnv
 	}
-	// Auto-derive a stable per-session capability to avoid manual export.
-	return deriveSessionCapability(resolveAgentSessionIdentity())
+	// Auto-derive a stable per-shell-session capability.
+	return deriveSessionCapability(defaultAgentSessionID())
 }
 
-func resolveAgentSessionIdentity() string {
-	if raw := strings.TrimSpace(os.Getenv(onesshAgentSessionEnv)); raw != "" {
-		return "env:" + raw
-	}
-	if tty, err := os.Readlink("/proc/self/fd/0"); err == nil && strings.TrimSpace(tty) != "" {
-		return "tty:" + tty
-	}
-	return fmt.Sprintf("ppid:%d", os.Getppid())
+func defaultAgentSessionID() string {
+	return fmt.Sprintf("uid:%d:ppid:%d", os.Getuid(), os.Getppid())
 }
 
-func deriveSessionCapability(identity string) string {
-	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + identity))
+func deriveSessionCapability(sessionID string) string {
+	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + sessionID))
 	return hex.EncodeToString(sum[:])
 }
 
 func defaultAgentSocketPath() (string, error) {
-	sessionID := resolveAgentSessionIdentity()
-	sum := sha256.Sum256([]byte("onessh:agent:socket:v1:" + sessionID))
-	socketName := "agent-" + hex.EncodeToString(sum[:8]) + ".sock"
+	socketName := "agent-" + fmt.Sprintf("%d", os.Getppid()) + ".sock"
 
 	if runtimeDir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); runtimeDir != "" {
 		return filepath.Join(runtimeDir, "onessh", socketName), nil

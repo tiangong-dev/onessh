@@ -233,7 +233,7 @@ Memory backend behavior:
 
 - Master password cache is memory-agent only (no file cache).
 - Agent auto-starts on first successful password entry.
-- By default, agent socket and capability are auto-derived per shell session/window (no manual export needed).
+- By default, agent socket and capability are auto-derived from parent shell PID (separate shell windows get isolated agent namespaces).
 - Manage manually via `onessh agent start|status|stop|clear-all`.
 - Use `onessh logout --all` to wipe all onessh master-password cache entries.
 - When capability is configured, all agent requests (including askpass token flow) must carry the same token.

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -62,20 +63,21 @@ func TestDefaultAgentCapabilityFlagValuePrecedence(t *testing.T) {
 func TestResolveAgentCapabilityUsesSessionScopedFallback(t *testing.T) {
 	t.Setenv(onesshAgentCapabilityEnv, "")
 	t.Setenv("SHUSH_CAPABILITY", "")
-	t.Setenv(onesshAgentSessionEnv, "session-a")
 	first := resolveAgentCapability("")
 	if len(first) != 64 {
 		t.Fatalf("expected 64-char hex capability, got %d", len(first))
+	}
+	want := deriveSessionCapability(defaultAgentSessionID())
+	if first != want {
+		t.Fatalf("expected session-derived capability, want=%q got=%q", want, first)
 	}
 	second := resolveAgentCapability("")
 	if second != first {
 		t.Fatalf("expected deterministic session capability, first=%q second=%q", first, second)
 	}
 
-	t.Setenv(onesshAgentSessionEnv, "session-b")
-	third := resolveAgentCapability("")
-	if third == first {
-		t.Fatalf("expected different capability for different session")
+	if deriveSessionCapability("uid:1000:ppid:1") == deriveSessionCapability("uid:1000:ppid:2") {
+		t.Fatalf("expected different capability for different session ids")
 	}
 }
 
@@ -107,7 +109,6 @@ func TestResolveAgentSocketPathPrecedence(t *testing.T) {
 	t.Run("default path when no env", func(t *testing.T) {
 		t.Setenv("ONESSH_AGENT_SOCKET", "")
 		t.Setenv("SHUSH_SOCKET", "")
-		t.Setenv(onesshAgentSessionEnv, "session-a")
 		want, err := defaultAgentSocketPath()
 		if err != nil {
 			t.Fatalf("defaultAgentSocketPath: %v", err)
@@ -119,23 +120,10 @@ func TestResolveAgentSocketPathPrecedence(t *testing.T) {
 		if got != want {
 			t.Fatalf("unexpected default socket path: want=%q got=%q", want, got)
 		}
-	})
-
-	t.Run("different session gets different default path", func(t *testing.T) {
-		t.Setenv("ONESSH_AGENT_SOCKET", "")
-		t.Setenv("SHUSH_SOCKET", "")
-		t.Setenv(onesshAgentSessionEnv, "session-a")
-		first, err := resolveAgentSocketPath("")
-		if err != nil {
-			t.Fatalf("resolveAgentSocketPath first: %v", err)
-		}
-		t.Setenv(onesshAgentSessionEnv, "session-b")
-		second, err := resolveAgentSocketPath("")
-		if err != nil {
-			t.Fatalf("resolveAgentSocketPath second: %v", err)
-		}
-		if first == second {
-			t.Fatalf("expected different default socket path per session")
+		suffix := filepath.Base(got)
+		wantSuffix := "agent-" + strconv.Itoa(os.Getppid()) + ".sock"
+		if suffix != wantSuffix {
+			t.Fatalf("unexpected default socket filename: want=%q got=%q", wantSuffix, suffix)
 		}
 	})
 }

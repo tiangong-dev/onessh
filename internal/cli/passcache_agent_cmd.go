@@ -46,10 +46,7 @@ func newAgentServeCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newAgentStartCmd(opts *rootOptions) *cobra.Command {
-	var (
-		socket   string
-		printEnv bool
-	)
+	var socket string
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -64,17 +61,11 @@ func newAgentStartCmd(opts *rootOptions) *cobra.Command {
 			if err := startPassphraseAgentProcess(socketPath, capability); err != nil {
 				return err
 			}
-			exportLine := fmt.Sprintf("export %s=%s", onesshAgentCapabilityEnv, shellSingleQuote(capability))
-			if printEnv {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), exportLine)
-				return nil
-			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ agent started: %s\n", socketPath)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
-	cmd.Flags().BoolVar(&printEnv, "print-env", false, "Print export command for ONESSH_AGENT_CAPABILITY (for eval)")
 	return cmd
 }
 
