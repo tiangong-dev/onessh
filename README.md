@@ -225,14 +225,18 @@ Override options:
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
 - CLI flag: `--agent-socket /path/to/agent.sock`
+- CLI flag: `--agent-capability <token>` to require capability-auth for agent IPC
 - Environment variable: `ONESSH_AGENT_SOCKET` (fallback: `SHUSH_SOCKET`)
+- Environment variable: `ONESSH_AGENT_CAPABILITY` (fallback: `SHUSH_CAPABILITY`)
 
 Memory backend behavior:
 
 - Master password cache is memory-agent only (no file cache).
 - Agent auto-starts on first successful password entry.
+- By default, agent socket and capability are auto-derived from parent shell PID (separate shell windows get isolated agent namespaces).
 - Manage manually via `onessh agent start|status|stop|clear-all`.
 - Use `onessh logout --all` to wipe all onessh master-password cache entries.
+- When capability is configured, all agent requests (including askpass token flow) must carry the same token.
 
 Password auth note:
 
@@ -283,7 +287,8 @@ post_connect:
 - Encryption: Argon2id + AES-256-GCM
 - Only encrypted data is stored on disk (Git-friendly)
 - Master password and plaintext only exist in memory at runtime
-- Detailed design and flowcharts: [`docs/security.md`](docs/security.md)
+- Architecture and execution flow: [`docs/architecture.md`](docs/architecture.md)
+- Security model and mitigations: [`docs/security.md`](docs/security.md)
 
 ## Automated Release (GitHub Actions)
 

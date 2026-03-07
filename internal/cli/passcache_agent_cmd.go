@@ -38,7 +38,7 @@ func newAgentServeCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return servePassphraseAgent(socketPath, cmd.ErrOrStderr())
+			return servePassphraseAgentWithCapability(socketPath, cmd.ErrOrStderr(), resolveCapabilityFlag("", opts))
 		},
 	}
 	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
@@ -57,7 +57,8 @@ func newAgentStartCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := startPassphraseAgentProcess(socketPath); err != nil {
+			capability := resolveCapabilityFlag("", opts)
+			if err := startPassphraseAgentProcess(socketPath, capability); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ agent started: %s\n", socketPath)
@@ -80,7 +81,7 @@ func newAgentStopCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := requestPassphraseAgentStop(socketPath); err != nil {
+			if err := requestPassphraseAgentStop(socketPath, resolveCapabilityFlag("", opts)); err != nil {
 				fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
 				return nil
 			}
@@ -104,7 +105,7 @@ func newAgentStatusCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := pingPassphraseAgent(socketPath); err != nil {
+			if err := pingPassphraseAgent(socketPath, resolveCapabilityFlag("", opts)); err != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "not running (%s)\n", socketPath)
 				return nil
 			}
@@ -128,7 +129,7 @@ func newAgentClearAllCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := clearPassphraseAgentAll(socketPath); err != nil {
+			if err := clearPassphraseAgentAll(socketPath, resolveCapabilityFlag("", opts)); err != nil {
 				fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
 				return nil
 			}
@@ -171,8 +172,12 @@ func newAskPassCmd(opts *rootOptions) *cobra.Command {
 			if tokenValue == "" {
 				return errors.New("missing askpass token")
 			}
+			capabilityValue := strings.TrimSpace(os.Getenv("ONESSH_ASKPASS_CAPABILITY"))
+			if capabilityValue == "" {
+				capabilityValue = resolveCapabilityFlag("", opts)
+			}
 
-			secret, err := resolveAskPassTokenSecret(socketPath, tokenValue)
+			secret, err := resolveAskPassTokenSecret(socketPath, tokenValue, capabilityValue)
 			if err != nil {
 				return err
 			}
@@ -195,4 +200,14 @@ func resolveSocketFlag(explicit string, opts *rootOptions) string {
 		return ""
 	}
 	return opts.agentSocket
+}
+
+func resolveCapabilityFlag(explicit string, opts *rootOptions) string {
+	if strings.TrimSpace(explicit) != "" {
+		return strings.TrimSpace(explicit)
+	}
+	if opts == nil {
+		return resolveAgentCapability("")
+	}
+	return resolveAgentCapability(opts.agentCapability)
 }

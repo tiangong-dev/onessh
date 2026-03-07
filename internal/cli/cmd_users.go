@@ -349,7 +349,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := clearPassphraseCacheByPrefix(socketPath, passphraseCacheKeyPrefixV1); err != nil {
+				if err := clearPassphraseCacheByPrefix(socketPath, passphraseCacheKeyPrefixV1, opts.agentCapability); err != nil {
 					fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
 					return nil
 				}

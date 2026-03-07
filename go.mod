@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/spf13/cobra v1.10.2
-	github.com/tiangong-dev/shush v0.3.0
+	github.com/tiangong-dev/shush v0.4.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.40.0

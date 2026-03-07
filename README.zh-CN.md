@@ -225,14 +225,18 @@ onessh ls --tag prod --filter "cn-*"
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 禁用缓存
 - 命令参数：`--agent-socket /path/to/agent.sock`
+- 命令参数：`--agent-capability <token>` 为 agent IPC 启用 capability 校验
 - 环境变量：`ONESSH_AGENT_SOCKET`（回退：`SHUSH_SOCKET`）
+- 环境变量：`ONESSH_AGENT_CAPABILITY`（回退：`SHUSH_CAPABILITY`）
 
 内存 agent 行为：
 
 - 主密码缓存仅支持内存 agent（不兼容文件缓存）。
 - 首次成功输入主密码后自动拉起 agent。
+- 默认会基于父 shell PID 自动派生 agent socket 与 capability（不同窗口通常天然隔离）。
 - 也可手动管理：`onessh agent start|status|stop|clear-all`。
 - 可使用 `onessh logout --all` 清空 onessh 的全部主密码缓存条目。
+- 配置 capability 后，所有 agent 请求（含 askpass token 流程）都必须携带同一 token。
 
 密码认证说明：
 
@@ -283,7 +287,8 @@ post_connect:
 - 加密方案：Argon2id + AES-256-GCM
 - 磁盘仅保存密文，适合纳入 Git 管理
 - 主密码与明文仅在运行时内存中存在
-- 详细机制与流程图见：[`docs/security.md`](docs/security.md)
+- 架构设计与执行流程见：[`docs/architecture.md`](docs/architecture.md)
+- 安全模型与防护细节见：[`docs/security.md`](docs/security.md)
 
 ## 自动发布（GitHub Actions）
 
