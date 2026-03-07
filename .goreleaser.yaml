@@ -5,7 +5,6 @@ project_name: onessh
 before:
   hooks:
     - go mod tidy
-    - go test ./...
 
 builds:
   - id: onessh

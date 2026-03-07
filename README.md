@@ -36,7 +36,21 @@ The data directory is safe to push to a **public** Git repository — all sensit
 ## Build
 
 ```bash
-go build -o onessh ./cmd/onessh
+make build
+```
+
+Release-style local build (with version ldflags):
+
+```bash
+make build-release VERSION=v0.0.0
+```
+
+## Test
+
+```bash
+make test          # includes e2e tests
+make test-short    # fast path (skips e2e)
+make test-e2e      # e2e only
 ```
 
 ## Install (Homebrew)
