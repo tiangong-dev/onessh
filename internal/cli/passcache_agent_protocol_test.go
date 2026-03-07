@@ -1,44 +1,43 @@
 package cli
 
 import (
+	"strings"
 	"testing"
-	"time"
 )
 
-func TestEnvDurationMillis(t *testing.T) {
-	t.Setenv("ONESSH_AGENT_DIAL_TIMEOUT_MS", "123")
-	if got := envDurationMillis("ONESSH_AGENT_DIAL_TIMEOUT_MS"); got != 123*time.Millisecond {
-		t.Fatalf("unexpected duration: %v", got)
-	}
-
-	t.Setenv("ONESSH_AGENT_DIAL_TIMEOUT_MS", "-1")
-	if got := envDurationMillis("ONESSH_AGENT_DIAL_TIMEOUT_MS"); got != 0 {
-		t.Fatalf("expected zero for invalid negative value, got %v", got)
-	}
-
-	t.Setenv("ONESSH_AGENT_DIAL_TIMEOUT_MS", "abc")
-	if got := envDurationMillis("ONESSH_AGENT_DIAL_TIMEOUT_MS"); got != 0 {
-		t.Fatalf("expected zero for invalid text value, got %v", got)
+func TestRegisterAskPassTokenRejectsEmptyPassword(t *testing.T) {
+	socketPath := startTestPassphraseAgent(t)
+	if _, _, err := registerAskPassToken(socketPath, "   ", 0, 0); err == nil {
+		t.Fatalf("expected error for empty password")
 	}
 }
 
-func TestShushClientOptionsFromEnv(t *testing.T) {
-	t.Setenv("ONESSH_AGENT_DIAL_TIMEOUT_MS", "200")
-	t.Setenv("ONESSH_AGENT_REQUEST_TIMEOUT_MS", "1200")
-	t.Setenv("ONESSH_AGENT_STARTUP_TIMEOUT_MS", "1500")
-	t.Setenv("ONESSH_AGENT_STARTUP_PROBE_INTERVAL_MS", "40")
+func TestRegisterAskPassTokenUsesDefaultPolicy(t *testing.T) {
+	socketPath := startTestPassphraseAgent(t)
+	token, cleanup, err := registerAskPassToken(socketPath, "ssh-secret", 0, 0)
+	if err != nil {
+		t.Fatalf("registerAskPassToken: %v", err)
+	}
+	defer cleanup()
 
-	opts := shushClientOptionsFromEnv()
-	if opts.DialTimeout != 200*time.Millisecond {
-		t.Fatalf("unexpected dial timeout: %v", opts.DialTimeout)
+	first, err := resolveAskPassTokenSecret(socketPath, token)
+	if err != nil {
+		t.Fatalf("resolveAskPassTokenSecret first: %v", err)
 	}
-	if opts.RequestTimeout != 1200*time.Millisecond {
-		t.Fatalf("unexpected request timeout: %v", opts.RequestTimeout)
+	if first != "ssh-secret" {
+		t.Fatalf("unexpected first secret: %q", first)
 	}
-	if opts.StartupTimeout != 1500*time.Millisecond {
-		t.Fatalf("unexpected startup timeout: %v", opts.StartupTimeout)
+
+	second, err := resolveAskPassTokenSecret(socketPath, token)
+	if err != nil {
+		t.Fatalf("resolveAskPassTokenSecret second: %v", err)
 	}
-	if opts.StartupProbeInterval != 40*time.Millisecond {
-		t.Fatalf("unexpected startup probe interval: %v", opts.StartupProbeInterval)
+	if second != "ssh-secret" {
+		t.Fatalf("unexpected second secret: %q", second)
+	}
+
+	_, err = resolveAskPassTokenSecret(socketPath, token)
+	if err == nil || !strings.Contains(err.Error(), "not found or expired") {
+		t.Fatalf("expected token exhaustion error, got %v", err)
 	}
 }
