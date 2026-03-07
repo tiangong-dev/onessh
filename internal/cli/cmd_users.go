@@ -332,11 +332,26 @@ func newPasswdCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newLogoutCmd(opts *rootOptions) *cobra.Command {
+	var clearAll bool
+
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Clear cached master password",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if clearAll {
+				socketPath, err := resolveAgentSocketPath(resolveSocketFlag("", opts))
+				if err != nil {
+					return err
+				}
+				if err := clearPassphraseAgentAll(socketPath); err != nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
+					return nil
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "✔ all agent cache entries cleared")
+				return nil
+			}
+
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -358,6 +373,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&clearAll, "all", false, "Clear all agent cache entries and askpass tokens")
 	return cmd
 }
 

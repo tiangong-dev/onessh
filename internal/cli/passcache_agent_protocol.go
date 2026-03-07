@@ -82,6 +82,9 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	if fromEnv := strings.TrimSpace(os.Getenv("ONESSH_AGENT_SOCKET")); fromEnv != "" {
 		return expandTilde(fromEnv)
 	}
+	if fromEnv := strings.TrimSpace(os.Getenv("SHUSH_SOCKET")); fromEnv != "" {
+		return expandTilde(fromEnv)
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
@@ -103,4 +106,8 @@ func pingPassphraseAgent(socketPath string) error {
 
 func requestPassphraseAgentStop(socketPath string) error {
 	return shush.Stop(socketPath)
+}
+
+func clearPassphraseAgentAll(socketPath string) error {
+	return shush.ClearAll(socketPath)
 }
