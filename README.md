@@ -67,22 +67,6 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 When adding a host, you can create a new user profile or select an existing one.
 
-## Internal Workflow
-
-OneSSH runtime pipeline (implementation-oriented):
-
-1. **Context resolution**: parse CLI flags/env, resolve data path, and derive default agent socket/capability from parent shell PID when not explicitly configured.
-2. **Cache namespace setup**: canonicalize data path and build a namespaced cache key (`onessh:passphrase:v1:<canonical-path>`).
-3. **Master passphrase retrieval**:
-   - try memory agent first;
-   - on cache miss, prompt once, decrypt store, then write back to memory agent with TTL.
-4. **Command execution path**:
-   - key auth: use `ssh/scp` with selected key;
-   - password auth: prefer `sshpass -d` (FD pipe), fallback to `SSH_ASKPASS` + short-lived IPC token.
-5. **Security cleanup**: wipe transient secrets in memory and clear stale cache entries on decryption failure.
-
-Detailed internals, flowcharts, and threat-model notes: [`docs/security.md`](docs/security.md).
-
 ## Shell Completion
 
 ```bash
@@ -303,7 +287,8 @@ post_connect:
 - Encryption: Argon2id + AES-256-GCM
 - Only encrypted data is stored on disk (Git-friendly)
 - Master password and plaintext only exist in memory at runtime
-- Detailed design and flowcharts: [`docs/security.md`](docs/security.md)
+- Architecture and execution flow: [`docs/architecture.md`](docs/architecture.md)
+- Security model and mitigations: [`docs/security.md`](docs/security.md)
 
 ## Automated Release (GitHub Actions)
 

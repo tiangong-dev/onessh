@@ -67,22 +67,6 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 添加主机时，可以输入新 user（创建新 profile），也可以直接选择已有 profile。
 
-## 内部工作流程
-
-OneSSH 的运行链路（偏实现视角）：
-
-1. **上下文解析**：解析命令行参数/环境变量；若未显式配置，则基于父 shell PID 派生默认 agent socket/capability。
-2. **缓存命名空间构建**：对 data path 做 canonicalize，生成命名空间缓存 key（`onessh:passphrase:v1:<canonical-path>`）。
-3. **主密码获取**：
-   - 先从内存 agent 读取；
-   - 未命中则提示输入主密码，解密配置后按 TTL 回写内存 agent。
-4. **命令执行分支**：
-   - key 认证：使用 `ssh/scp` + 指定私钥；
-   - password 认证：优先 `sshpass -d`（FD 管道），回退 `SSH_ASKPASS` + 短时 IPC token。
-5. **安全清理**：清除临时敏感内存；解密失败时移除陈旧缓存条目。
-
-完整内部机制、流程图与威胁模型说明见：[`docs/security.md`](docs/security.md)。
-
 ## Shell 补全
 
 ```bash
@@ -303,7 +287,8 @@ post_connect:
 - 加密方案：Argon2id + AES-256-GCM
 - 磁盘仅保存密文，适合纳入 Git 管理
 - 主密码与明文仅在运行时内存中存在
-- 详细机制与流程图见：[`docs/security.md`](docs/security.md)
+- 架构设计与执行流程见：[`docs/architecture.md`](docs/architecture.md)
+- 安全模型与防护细节见：[`docs/security.md`](docs/security.md)
 
 ## 自动发布（GitHub Actions）
 

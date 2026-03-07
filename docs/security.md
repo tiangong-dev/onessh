@@ -1,40 +1,7 @@
 # OneSSH Security Mechanisms
 
-This document summarizes the current security design, execution flow, and key mitigations.
-
-## 0. Internal Runtime Workflow
-
-```mermaid
-flowchart TD
-  A["CLI entrypoint"] --> B["Parse flags/env"]
-  B --> C["Resolve data path + agent socket"]
-  C --> D["Resolve capability (flag/env/default ppid-derived)"]
-  D --> E["Build canonical cache key per data path"]
-  E --> F{"Passphrase in memory agent?"}
-  F -- "hit" --> G["Load/decrypt config"]
-  F -- "miss" --> H["Prompt master password"]
-  H --> I["Load/decrypt config"]
-  I --> J["Cache passphrase in memory agent (TTL)"]
-  J --> G
-  G --> K{"Command kind"}
-  K -- "connect/exec/cp/test" --> L{"Auth type"}
-  L -- "key" --> M["exec ssh/scp with key options"]
-  L -- "password + sshpass available" --> N["exec sshpass -d with FD pipe"]
-  L -- "password + no sshpass" --> O["issue short-lived askpass IPC token"]
-  O --> P["spawn SSH_ASKPASS helper"]
-  K -- "config ops" --> Q["save/update encrypted store"]
-  M --> R["wipe transient buffers"]
-  N --> R
-  P --> R
-  Q --> R
-```
-
-Implementation notes:
-
-- Default session namespace is based on parent shell PID, which isolates agent socket/capability across terminal sessions by default.
-- Cache key namespace is bound to canonical data path to prevent accidental cross-store passphrase reuse.
-- If cached passphrase fails decryption, OneSSH clears that cache entry before re-prompting.
-- Secrets remain memory-only; OneSSH does not persist plaintext credential cache to disk.
+This document summarizes OneSSH security design and key mitigations.
+For complete architecture and runtime execution flow, see [`architecture.md`](architecture.md).
 
 ## 1. Data At Rest Encryption
 
