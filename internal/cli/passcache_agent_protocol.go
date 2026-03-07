@@ -21,7 +21,7 @@ type passphraseAgentClient struct {
 }
 
 func newPassphraseAgentClient(
-	dataPath string,
+	cacheKey string,
 	ttl time.Duration,
 	disabled bool,
 	customSocket string,
@@ -34,7 +34,7 @@ func newPassphraseAgentClient(
 		return passphraseAgentClient{}, err
 	}
 	normalizedTTL := normalizeTTL(ttl)
-	client := shush.NewClient(socketPath, dataPath, normalizedTTL)
+	client := shush.NewClient(socketPath, cacheKey, normalizedTTL)
 	if exePath, exeErr := os.Executable(); exeErr == nil {
 		client.ServeArgs = []string{exePath, "agent", "serve", "--socket"}
 	}

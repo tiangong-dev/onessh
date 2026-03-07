@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -102,6 +101,9 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 			if alias == "" {
 				return errors.New("user alias cannot be empty")
 			}
+			if err := validateUserAuthFlagUsage(cmd, authType, keyPath, password); err != nil {
+				return err
+			}
 
 			repo, err := opts.repository()
 			if err != nil {
@@ -177,6 +179,9 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 			alias := normalizeUserAlias(args[0])
 			if alias == "" {
 				return errors.New("user alias cannot be empty")
+			}
+			if err := validateUserAuthFlagUsage(cmd, authType, keyPath, password); err != nil {
+				return err
 			}
 
 			repo, err := opts.repository()
@@ -637,44 +642,6 @@ func promptUserRefByAlias(reader *bufio.Reader, cfg *store.PlainConfig) (string,
 	}
 }
 
-func promptUserRefText(
-	reader *bufio.Reader,
-	cfg *store.PlainConfig,
-	defaultUserRef, defaultUserName string,
-	defaultUserAuth *store.AuthConfig,
-) (string, error) {
-	out := promptWriter()
-	aliases := sortedUserAliases(cfg.Users)
-	fmt.Fprintln(out, "Available user profiles:")
-	for i, alias := range aliases {
-		fmt.Fprintf(out, "  %d) %s (%s)\n", i+1, alias, cfg.Users[alias].Name)
-	}
-
-	defaultChoice := defaultUserRef
-	if defaultChoice == "" {
-		defaultChoice = "new"
-	}
-
-	for {
-		raw, err := promptOptional(reader, "User profile (alias/index/new)", defaultChoice)
-		if err != nil {
-			return "", err
-		}
-		choice := strings.TrimSpace(raw)
-		if strings.EqualFold(choice, "new") || choice == "0" {
-			return createOrReuseUserProfile(reader, cfg, defaultUserName, defaultUserAuth)
-		}
-		if _, ok := cfg.Users[choice]; ok {
-			return choice, nil
-		}
-		index, err := strconv.Atoi(choice)
-		if err == nil && index >= 1 && index <= len(aliases) {
-			return aliases[index-1], nil
-		}
-		fmt.Fprintln(out, "Invalid user profile. Use alias/index or type new.")
-	}
-}
-
 func createOrReuseUserProfile(
 	reader *bufio.Reader,
 	cfg *store.PlainConfig,
@@ -841,14 +808,24 @@ func promptAuthConfig(reader *bufio.Reader, existing *store.AuthConfig) (store.A
 }
 
 func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, error) {
+	if strings.TrimSpace(keyPath) != "" && strings.TrimSpace(password) != "" {
+		return store.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
+	}
+
 	auth := store.AuthConfig{Type: authType}
 	switch authType {
 	case "key":
+		if strings.TrimSpace(password) != "" {
+			return store.AuthConfig{}, errors.New("--password is only valid when --auth-type=password")
+		}
 		if strings.TrimSpace(keyPath) == "" {
 			return store.AuthConfig{}, errors.New("key-path is required when auth-type=key")
 		}
 		auth.KeyPath = strings.TrimSpace(keyPath)
 	case "password":
+		if strings.TrimSpace(keyPath) != "" {
+			return store.AuthConfig{}, errors.New("--key-path is only valid when --auth-type=key")
+		}
 		if strings.TrimSpace(password) == "" {
 			return store.AuthConfig{}, errors.New("password is required when auth-type=password")
 		}
@@ -857,6 +834,41 @@ func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, 
 		return store.AuthConfig{}, errors.New("auth-type must be key or password")
 	}
 	return auth, nil
+}
+
+func validateUserAuthFlagUsage(cmd *cobra.Command, authType, keyPath, password string) error {
+	if cmd == nil {
+		return errors.New("command is required")
+	}
+
+	changedAuthType := cmd.Flags().Changed("auth-type")
+	changedKeyPath := cmd.Flags().Changed("key-path")
+	changedPassword := cmd.Flags().Changed("password")
+
+	if !changedAuthType && !changedKeyPath && !changedPassword {
+		return nil
+	}
+	if changedKeyPath && changedPassword {
+		return errors.New("cannot set --key-path and --password at the same time")
+	}
+	if (changedKeyPath || changedPassword) && !changedAuthType {
+		return errors.New("--auth-type is required when setting --key-path or --password")
+	}
+	if !changedAuthType {
+		return nil
+	}
+
+	normalized := normalizeAuthType(authType)
+	if normalized == "" {
+		return errors.New("--auth-type must be key or password")
+	}
+	if normalized == "key" && strings.TrimSpace(password) != "" {
+		return errors.New("--password is only valid when --auth-type=password")
+	}
+	if normalized == "password" && strings.TrimSpace(keyPath) != "" {
+		return errors.New("--key-path is only valid when --auth-type=key")
+	}
+	return nil
 }
 
 func promptAuthType(reader *bufio.Reader, defaultType string) (string, error) {

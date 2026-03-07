@@ -14,14 +14,14 @@ var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 const redactedSecretValue = "[REDACTED]"
 
 type rootOptions struct {
-	dataPath           string
-	cacheTTL           time.Duration
-	noCache            bool
-	agentSocket        string
-	quiet              bool
-	log                bool
-	noLog              bool
-	auditLog           *audit.Logger
+	dataPath    string
+	cacheTTL    time.Duration
+	noCache     bool
+	agentSocket string
+	quiet       bool
+	log         bool
+	noLog       bool
+	auditLog    *audit.Logger
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -63,8 +63,6 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		enabled := false
 		if opts.log {
 			enabled = true
-		} else if opts.noLog {
-			enabled = false
 		} else {
 			settings, err := audit.LoadSettings(repo.Path)
 			if err != nil {
@@ -102,7 +100,10 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		return nil
 	}
 	rootCmd.PersistentPostRun = func(cmd *cobra.Command, args []string) {
-		_ = opts.auditLog.Close()
+		if opts.auditLog != nil {
+			_ = opts.auditLog.Close()
+			opts.auditLog = nil
+		}
 	}
 
 	rootCmd.ValidArgsFunction = completionHostAliases(opts)

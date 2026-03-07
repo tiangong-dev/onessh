@@ -54,6 +54,11 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 		Short: "Show and manage audit logging",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			normalizedFormat, err := validateOutputFormat(format, "table", "json")
+			if err != nil {
+				return err
+			}
+
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -68,7 +73,7 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 				return nil
 			}
 
-			if format == "json" {
+			if normalizedFormat == "json" {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				return enc.Encode(events)

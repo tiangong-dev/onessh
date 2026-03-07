@@ -405,6 +405,11 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 		Short: "List hosts with summary information",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			normalizedFormat, err := validateOutputFormat(format, "table", "json")
+			if err != nil {
+				return err
+			}
+
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -439,7 +444,7 @@ func newLsCmd(opts *rootOptions) *cobra.Command {
 
 			aliases := collectFilteredHosts(cfg, filterTag, filter)
 
-			if format == "json" {
+			if normalizedFormat == "json" {
 				rows := make([]map[string]interface{}, 0, len(aliases))
 				for _, alias := range aliases {
 					host := cfg.Hosts[alias]
@@ -544,6 +549,11 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completionHostAliases(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			normalizedFormat, err := validateOutputFormat(outputFormat, "table", "yaml")
+			if err != nil {
+				return err
+			}
+
 			alias := strings.TrimSpace(args[0])
 			if alias == "" {
 				return errors.New("host alias cannot be empty")
@@ -565,7 +575,7 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("host %q not found", alias)
 			}
 
-			if outputFormat == "yaml" {
+			if normalizedFormat == "yaml" {
 				outCfg := store.PlainConfig{
 					Hosts: map[string]store.HostConfig{alias: host},
 					Users: map[string]store.UserConfig{},
