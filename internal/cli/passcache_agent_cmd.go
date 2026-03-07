@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -46,7 +48,10 @@ func newAgentServeCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newAgentStartCmd(opts *rootOptions) *cobra.Command {
-	var socket string
+	var (
+		socket   string
+		printEnv bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -57,14 +62,33 @@ func newAgentStartCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := startPassphraseAgentProcess(socketPath, resolveCapabilityFlag("", opts)); err != nil {
+			capability := resolveCapabilityFlag("", opts)
+			generated := false
+			if capability == "" {
+				capability, err = generateAgentCapabilityToken()
+				if err != nil {
+					return err
+				}
+				generated = true
+			}
+			if err := startPassphraseAgentProcess(socketPath, capability); err != nil {
 				return err
 			}
+			exportLine := fmt.Sprintf("export %s=%s", onesshAgentCapabilityEnv, shellSingleQuote(capability))
+			if printEnv {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), exportLine)
+				return nil
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ agent started: %s\n", socketPath)
+			if generated {
+				fmt.Fprintln(cmd.OutOrStdout(), "Generated session capability token (not persisted).")
+				fmt.Fprintf(cmd.OutOrStdout(), "Run in current shell: %s\n", exportLine)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
+	cmd.Flags().BoolVar(&printEnv, "print-env", false, "Print export command for ONESSH_AGENT_CAPABILITY (for eval)")
 	return cmd
 }
 
@@ -209,4 +233,12 @@ func resolveCapabilityFlag(explicit string, opts *rootOptions) string {
 		return resolveAgentCapability("")
 	}
 	return resolveAgentCapability(opts.agentCapability)
+}
+
+func generateAgentCapabilityToken() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("generate agent capability token: %w", err)
+	}
+	return hex.EncodeToString(secret), nil
 }
