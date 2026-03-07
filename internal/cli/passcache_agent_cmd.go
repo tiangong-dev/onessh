@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -63,14 +61,6 @@ func newAgentStartCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 			capability := resolveCapabilityFlag("", opts)
-			generated := false
-			if capability == "" {
-				capability, err = generateAgentCapabilityToken()
-				if err != nil {
-					return err
-				}
-				generated = true
-			}
 			if err := startPassphraseAgentProcess(socketPath, capability); err != nil {
 				return err
 			}
@@ -80,10 +70,6 @@ func newAgentStartCmd(opts *rootOptions) *cobra.Command {
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ agent started: %s\n", socketPath)
-			if generated {
-				fmt.Fprintln(cmd.OutOrStdout(), "Generated session capability token (not persisted).")
-				fmt.Fprintf(cmd.OutOrStdout(), "Run in current shell: %s\n", exportLine)
-			}
 			return nil
 		},
 	}
@@ -233,12 +219,4 @@ func resolveCapabilityFlag(explicit string, opts *rootOptions) string {
 		return resolveAgentCapability("")
 	}
 	return resolveAgentCapability(opts.agentCapability)
-}
-
-func generateAgentCapabilityToken() (string, error) {
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return "", fmt.Errorf("generate agent capability token: %w", err)
-	}
-	return hex.EncodeToString(secret), nil
 }

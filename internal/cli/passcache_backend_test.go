@@ -59,6 +59,26 @@ func TestDefaultAgentCapabilityFlagValuePrecedence(t *testing.T) {
 	})
 }
 
+func TestResolveAgentCapabilityUsesSessionScopedFallback(t *testing.T) {
+	t.Setenv(onesshAgentCapabilityEnv, "")
+	t.Setenv("SHUSH_CAPABILITY", "")
+	t.Setenv(onesshAgentSessionEnv, "session-a")
+	first := resolveAgentCapability("")
+	if len(first) != 64 {
+		t.Fatalf("expected 64-char hex capability, got %d", len(first))
+	}
+	second := resolveAgentCapability("")
+	if second != first {
+		t.Fatalf("expected deterministic session capability, first=%q second=%q", first, second)
+	}
+
+	t.Setenv(onesshAgentSessionEnv, "session-b")
+	third := resolveAgentCapability("")
+	if third == first {
+		t.Fatalf("expected different capability for different session")
+	}
+}
+
 func TestResolveAgentSocketPathPrecedence(t *testing.T) {
 	t.Run("explicit path has highest priority", func(t *testing.T) {
 		t.Setenv("ONESSH_AGENT_SOCKET", "/tmp/onessh.sock")
@@ -87,17 +107,35 @@ func TestResolveAgentSocketPathPrecedence(t *testing.T) {
 	t.Run("default path when no env", func(t *testing.T) {
 		t.Setenv("ONESSH_AGENT_SOCKET", "")
 		t.Setenv("SHUSH_SOCKET", "")
-		homeDir, err := os.UserHomeDir()
+		t.Setenv(onesshAgentSessionEnv, "session-a")
+		want, err := defaultAgentSocketPath()
 		if err != nil {
-			t.Fatalf("UserHomeDir: %v", err)
+			t.Fatalf("defaultAgentSocketPath: %v", err)
 		}
-		want := filepath.Join(homeDir, ".config", "onessh", "agent.sock")
 		got, err := resolveAgentSocketPath("")
 		if err != nil {
 			t.Fatalf("resolveAgentSocketPath: %v", err)
 		}
 		if got != want {
 			t.Fatalf("unexpected default socket path: want=%q got=%q", want, got)
+		}
+	})
+
+	t.Run("different session gets different default path", func(t *testing.T) {
+		t.Setenv("ONESSH_AGENT_SOCKET", "")
+		t.Setenv("SHUSH_SOCKET", "")
+		t.Setenv(onesshAgentSessionEnv, "session-a")
+		first, err := resolveAgentSocketPath("")
+		if err != nil {
+			t.Fatalf("resolveAgentSocketPath first: %v", err)
+		}
+		t.Setenv(onesshAgentSessionEnv, "session-b")
+		second, err := resolveAgentSocketPath("")
+		if err != nil {
+			t.Fatalf("resolveAgentSocketPath second: %v", err)
+		}
+		if first == second {
+			t.Fatalf("expected different default socket path per session")
 		}
 	})
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -102,11 +101,7 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	if fromEnv := strings.TrimSpace(os.Getenv("SHUSH_SOCKET")); fromEnv != "" {
 		return expandTilde(fromEnv)
 	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	return filepath.Join(homeDir, ".config", "onessh", "agent.sock"), nil
+	return defaultAgentSocketPath()
 }
 
 func startPassphraseAgentProcess(socketPath, capability string) error {

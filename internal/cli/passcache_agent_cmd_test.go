@@ -89,20 +89,3 @@ func TestLogoutAllClearsAgentWithoutRepositoryAccess(t *testing.T) {
 	}
 	shush.Wipe(externalSecret)
 }
-
-func TestGenerateAgentCapabilityToken(t *testing.T) {
-	first, err := generateAgentCapabilityToken()
-	if err != nil {
-		t.Fatalf("generateAgentCapabilityToken first: %v", err)
-	}
-	second, err := generateAgentCapabilityToken()
-	if err != nil {
-		t.Fatalf("generateAgentCapabilityToken second: %v", err)
-	}
-	if len(first) != 64 || len(second) != 64 {
-		t.Fatalf("expected 64-char hex capability, got first=%d second=%d", len(first), len(second))
-	}
-	if first == second {
-		t.Fatalf("expected distinct generated capability tokens")
-	}
-}

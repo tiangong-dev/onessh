@@ -233,11 +233,10 @@ onessh ls --tag prod --filter "cn-*"
 
 - 主密码缓存仅支持内存 agent（不兼容文件缓存）。
 - 首次成功输入主密码后自动拉起 agent。
+- 默认会按 shell 会话/窗口自动派生 agent socket 与 capability（无需手动 export）。
 - 也可手动管理：`onessh agent start|status|stop|clear-all`。
 - 可使用 `onessh logout --all` 清空 onessh 的全部主密码缓存条目。
 - 配置 capability 后，所有 agent 请求（含 askpass token 流程）都必须携带同一 token。
-- 若未配置 capability，`onessh agent start` 会自动生成随机会话 token，并输出 export 命令（不落盘）。
-- 如需直接注入当前 shell，可使用：`eval "$(onessh agent start --print-env)"`。
 
 密码认证说明：
 
