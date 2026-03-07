@@ -2,6 +2,29 @@
 
 This document summarizes the current security design, execution flow, and key mitigations.
 
+## 0. End-to-End Workflow (Operator View)
+
+```mermaid
+flowchart TD
+  A["onessh command"] --> B["Resolve host/user config path"]
+  B --> C{"Master password in agent cache?"}
+  C -- "Yes" --> D["Decrypt config and continue"]
+  C -- "No" --> E["Prompt master password"]
+  E --> F["Decrypt config"]
+  F --> G["Store passphrase in memory agent (TTL)"]
+  G --> D
+  D --> H{"Auth type"}
+  H -- "key" --> I["ssh/scp with key"]
+  H -- "password + sshpass" --> J["sshpass -d via FD pipe"]
+  H -- "password no sshpass" --> K["SSH_ASKPASS + short-lived token"]
+```
+
+Operational notes:
+
+- Agent socket and capability are session-scoped by default (derived from parent shell PID).
+- Secrets remain memory-only; no plaintext credential cache is written to disk.
+- Use `onessh logout`, `onessh logout --all`, or `onessh agent clear-all` to proactively clear runtime cache.
+
 ## 1. Data At Rest Encryption
 
 - KDF: Argon2id

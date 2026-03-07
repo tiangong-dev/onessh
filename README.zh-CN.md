@@ -67,6 +67,19 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 添加主机时，可以输入新 user（创建新 profile），也可以直接选择已有 profile。
 
+## 工作流程
+
+日常使用建议按以下流程：
+
+1. **初始化一次**：执行 `onessh init`，然后 `onessh add <alias>`。
+2. **按需执行命令**：使用 `onessh <alias>`、`onessh exec`、`onessh cp`、`onessh test`。
+3. **首次访问解锁**：OneSSH 会提示输入主密码，解密配置并自动拉起内存 agent。
+4. **会话内复用缓存**：同一 shell 会话后续命令复用 TTL 缓存，一般无需重复输入主密码。
+5. **结束后清理**：可使用 `onessh logout`（当前仓库）、`onessh logout --all` 或 `onessh agent clear-all`。
+
+默认情况下，agent 的 socket/capability 基于父 shell PID 自动派生，不同终端窗口默认隔离。
+完整安全设计与流程图见：[`docs/security.md`](docs/security.md)。
+
 ## Shell 补全
 
 ```bash
