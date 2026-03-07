@@ -14,14 +14,15 @@ var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 const redactedSecretValue = "[REDACTED]"
 
 type rootOptions struct {
-	dataPath    string
-	cacheTTL    time.Duration
-	noCache     bool
-	agentSocket string
-	quiet       bool
-	log         bool
-	noLog       bool
-	auditLog    *audit.Logger
+	dataPath        string
+	cacheTTL        time.Duration
+	noCache         bool
+	agentSocket     string
+	agentCapability string
+	quiet           bool
+	log             bool
+	noLog           bool
+	auditLog        *audit.Logger
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {
@@ -46,6 +47,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
 	rootCmd.PersistentFlags().BoolVar(&opts.noCache, "no-cache", false, "Disable master password cache")
 	rootCmd.PersistentFlags().StringVar(&opts.agentSocket, "agent-socket", defaultAgentSocketFlagValue(), "Memory cache agent Unix socket path")
+	rootCmd.PersistentFlags().StringVar(&opts.agentCapability, "agent-capability", defaultAgentCapabilityFlagValue(), "Capability token required by memory cache agent")
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&opts.log, "log", false, "Enable audit logging for this command run")
 	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")

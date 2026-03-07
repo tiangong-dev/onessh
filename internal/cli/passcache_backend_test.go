@@ -33,6 +33,32 @@ func TestDefaultAgentSocketFlagValuePrecedence(t *testing.T) {
 	})
 }
 
+func TestDefaultAgentCapabilityFlagValuePrecedence(t *testing.T) {
+	t.Run("prefer ONESSH over SHUSH", func(t *testing.T) {
+		t.Setenv(onesshAgentCapabilityEnv, "onessh-cap")
+		t.Setenv("SHUSH_CAPABILITY", "shush-cap")
+		if got := defaultAgentCapabilityFlagValue(); got != "onessh-cap" {
+			t.Fatalf("expected ONESSH capability, got %q", got)
+		}
+	})
+
+	t.Run("fallback to SHUSH", func(t *testing.T) {
+		t.Setenv(onesshAgentCapabilityEnv, "")
+		t.Setenv("SHUSH_CAPABILITY", "shush-cap")
+		if got := defaultAgentCapabilityFlagValue(); got != "shush-cap" {
+			t.Fatalf("expected SHUSH capability, got %q", got)
+		}
+	})
+
+	t.Run("empty when no env provided", func(t *testing.T) {
+		t.Setenv(onesshAgentCapabilityEnv, "")
+		t.Setenv("SHUSH_CAPABILITY", "")
+		if got := defaultAgentCapabilityFlagValue(); got != "" {
+			t.Fatalf("expected empty value, got %q", got)
+		}
+	})
+}
+
 func TestResolveAgentSocketPathPrecedence(t *testing.T) {
 	t.Run("explicit path has highest priority", func(t *testing.T) {
 		t.Setenv("ONESSH_AGENT_SOCKET", "/tmp/onessh.sock")

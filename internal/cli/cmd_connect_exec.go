@@ -93,7 +93,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	if !opts.quiet {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
 	}
-	connErr := executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket)
+	connErr := executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket, opts.agentCapability)
 	if connErr != nil {
 		opts.logEvent("connect", alias, target.Host, userName, "fail", connErr)
 	} else {
@@ -109,6 +109,7 @@ func executeSSH(
 	sshArgs []string,
 	errOut io.Writer,
 	agentSocket string,
+	agentCapability string,
 ) error {
 	args := make([]string, 0, 10+len(sshArgs))
 	extraFiles := []*os.File{}
@@ -176,7 +177,7 @@ func executeSSH(
 			args = append([]string{"-d", "3", "ssh"}, args...)
 		} else {
 			fmt.Fprintln(errOut, "sshpass not found, using SSH_ASKPASS via agent IPC fallback.")
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
 			if err != nil {
 				return err
 			}
@@ -250,7 +251,7 @@ func newPasswordFD(password string) (*os.File, func(), error) {
 	return reader, cleanup, nil
 }
 
-func prepareAskPassEnv(agentSocket, password string) ([]string, func(), error) {
+func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, errors.New("password auth requires non-empty password")
 	}
@@ -259,7 +260,7 @@ func prepareAskPassEnv(agentSocket, password string) ([]string, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	token, clearToken, err := registerAskPassToken(socketPath, password, defaultAskPassTTL, defaultAskPassMaxUses)
+	token, clearToken, err := registerAskPassToken(socketPath, password, defaultAskPassTTL, defaultAskPassMaxUses, agentCapability)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -295,6 +296,7 @@ func prepareAskPassEnv(agentSocket, password string) ([]string, func(), error) {
 		return nil, nil, fmt.Errorf("chmod askpass launcher: %w", err)
 	}
 
+	capabilityValue := resolveAgentCapability(agentCapability)
 	env := []string{
 		"SSH_ASKPASS=" + scriptPath,
 		"SSH_ASKPASS_REQUIRE=force",
@@ -302,6 +304,9 @@ func prepareAskPassEnv(agentSocket, password string) ([]string, func(), error) {
 		"ONESSH_ASKPASS_EXE=" + exePath,
 		"ONESSH_ASKPASS_SOCKET=" + socketPath,
 		"ONESSH_ASKPASS_TOKEN=" + token,
+	}
+	if capabilityValue != "" {
+		env = append(env, "ONESSH_ASKPASS_CAPABILITY="+capabilityValue)
 	}
 	cleanup := func() {
 		clearToken()
@@ -384,7 +389,7 @@ Use alias:path to specify a remote path:
 					return nil
 				}
 
-				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket)
+				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket, opts.agentCapability)
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
@@ -399,7 +404,7 @@ Use alias:path to specify a remote path:
 				_, _, srcRemote := splitCpArg(args[0])
 				_, _, dstRemote := splitCpArg(args[1])
 				if srcRemote && dstRemote {
-					return executeRemoteToRemoteCopy(cfg, args[0], args[1], recursive, opts.agentSocket)
+					return executeRemoteToRemoteCopy(cfg, args[0], args[1], recursive, opts.agentSocket, opts.agentCapability)
 				}
 
 				alias, remotePath, isUpload, err = parseCpArgs(args[0], args[1])
@@ -436,7 +441,7 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			cpErr := executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, nil, nil)
+			cpErr := executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, opts.agentCapability, nil, nil)
 			if cpErr != nil {
 				opts.logEvent("cp", alias, target.Host, userName, "fail", cpErr)
 			} else {
@@ -487,7 +492,7 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 	return arg[:idx], arg[idx+1:], true
 }
 
-func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket string) error {
+func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string) error {
 	srcAlias, srcPath, _ := splitCpArg(srcArg)
 	dstAlias, dstPath, _ := splitCpArg(dstArg)
 
@@ -517,7 +522,7 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 1: download from source to temp dir
 	fmt.Fprintf(os.Stderr, "Downloading from %s (%s) ...\n", srcAlias, srcHost.Host)
-	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, nil, nil); err != nil {
+	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, agentCapability, nil, nil); err != nil {
 		return fmt.Errorf("download from %s failed: %w", srcAlias, err)
 	}
 
@@ -536,14 +541,14 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 2: upload from temp to destination
 	fmt.Fprintf(os.Stderr, "Uploading to %s (%s) ...\n", dstAlias, dstHost.Host)
-	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, nil, nil); err != nil {
+	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, agentCapability, nil, nil); err != nil {
 		return fmt.Errorf("upload to %s failed: %w", dstAlias, err)
 	}
 
 	return nil
 }
 
-func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket string, stdout, stderr io.Writer) error {
+func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -602,7 +607,7 @@ func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, r
 			binary = "sshpass"
 			args = append([]string{"-d", "3", "scp"}, args...)
 		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
 			if err != nil {
 				return err
 			}
@@ -658,7 +663,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 
-				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket)
+				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability)
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
@@ -681,7 +686,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			execErr := executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, nil, nil)
+			execErr := executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, opts.agentCapability, nil, nil)
 			if execErr != nil {
 				opts.logEvent("exec", alias, target.Host, userName, "fail", execErr)
 			} else {
@@ -699,7 +704,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -750,7 +755,7 @@ func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthCon
 			binary = "sshpass"
 			args = append([]string{"-d", "3", "ssh"}, args...)
 		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
 			if err != nil {
 				return err
 			}
@@ -806,7 +811,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 
-				anyFailed := runBatchTest(cmd, cfg, aliases, timeout, parallel, opts.agentSocket)
+				anyFailed := runBatchTest(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability)
 				if anyFailed {
 					return errors.New("one or more hosts failed connectivity check")
 				}
@@ -825,7 +830,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if testErr := runSSHTest(target, userName, auth, timeout, opts.agentSocket); testErr != nil {
+			if testErr := runSSHTest(target, userName, auth, timeout, opts.agentSocket, opts.agentCapability); testErr != nil {
 				opts.logEvent("test", alias, target.Host, userName, "fail", testErr)
 				return fmt.Errorf("connectivity check failed: %w", testErr)
 			}
@@ -844,7 +849,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket string) bool {
+func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string) bool {
 	type result struct {
 		skip bool
 		err  error
@@ -864,7 +869,7 @@ func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, t
 				results[i] = result{skip: true, err: err}
 				return
 			}
-			results[i] = result{err: runSSHTest(host, userName, auth, timeout, agentSocket)}
+			results[i] = result{err: runSSHTest(host, userName, auth, timeout, agentSocket, agentCapability)}
 		}(i, alias)
 	}
 	wg.Wait()
@@ -887,7 +892,7 @@ func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, t
 	return anyFailed
 }
 
-func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket string) bool {
+func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string) bool {
 	type result struct {
 		skip   bool
 		err    error
@@ -910,7 +915,7 @@ func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, r
 				return
 			}
 			var outBuf, errBuf bytes.Buffer
-			err = executeRemoteCmd(host, userName, auth, remoteCmd, agentSocket, &outBuf, &errBuf)
+			err = executeRemoteCmd(host, userName, auth, remoteCmd, agentSocket, agentCapability, &outBuf, &errBuf)
 			results[i] = result{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
 		}(i, alias)
 	}
@@ -940,7 +945,7 @@ func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, r
 	return anyFailed
 }
 
-func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket string) bool {
+func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string) bool {
 	type result struct {
 		skip   bool
 		err    error
@@ -963,7 +968,7 @@ func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, rem
 				return
 			}
 			var outBuf, errBuf bytes.Buffer
-			err = executeSCP(host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, &outBuf, &errBuf)
+			err = executeSCP(host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, agentCapability, &outBuf, &errBuf)
 			results[i] = result{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
 		}(i, alias)
 	}
@@ -993,7 +998,7 @@ func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, rem
 	return anyFailed
 }
 
-func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket string) error {
+func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
 	if host.Port <= 0 {
 		host.Port = 22
 	}
@@ -1041,7 +1046,7 @@ func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, t
 			binary = "sshpass"
 			args = append([]string{"-d", "3", "ssh"}, args...)
 		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, auth.Password)
+			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
 			if err != nil {
 				return err
 			}

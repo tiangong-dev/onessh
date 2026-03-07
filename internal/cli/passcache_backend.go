@@ -6,11 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/tiangong-dev/shush"
 )
 
 const (
 	defaultCacheTTL            = 10 * time.Minute
 	passphraseCacheKeyPrefixV1 = "onessh:passphrase:v1:"
+	onesshAgentCapabilityEnv   = "ONESSH_AGENT_CAPABILITY"
 )
 
 type passphraseStore interface {
@@ -30,12 +33,29 @@ func defaultAgentSocketFlagValue() string {
 	return ""
 }
 
+func defaultAgentCapabilityFlagValue() string {
+	if raw := strings.TrimSpace(os.Getenv(onesshAgentCapabilityEnv)); raw != "" {
+		return raw
+	}
+	if raw := strings.TrimSpace(os.Getenv(shush.EnvCapability)); raw != "" {
+		return raw
+	}
+	return ""
+}
+
+func resolveAgentCapability(explicit string) string {
+	if raw := strings.TrimSpace(explicit); raw != "" {
+		return raw
+	}
+	return defaultAgentCapabilityFlagValue()
+}
+
 func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) {
 	if o == nil {
 		return nil, errors.New("root options are required")
 	}
 	cacheKey := passphraseCacheKey(dataPath)
-	return newPassphraseAgentClient(cacheKey, o.cacheTTL, o.noCache, o.agentSocket)
+	return newPassphraseAgentClient(cacheKey, o.cacheTTL, o.noCache, o.agentSocket, o.agentCapability)
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {

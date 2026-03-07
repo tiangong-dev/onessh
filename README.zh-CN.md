@@ -225,7 +225,9 @@ onessh ls --tag prod --filter "cn-*"
 - 命令参数：`--cache-ttl 10m`（默认 10 分钟）
 - 命令参数：`--no-cache` 禁用缓存
 - 命令参数：`--agent-socket /path/to/agent.sock`
+- 命令参数：`--agent-capability <token>` 为 agent IPC 启用 capability 校验
 - 环境变量：`ONESSH_AGENT_SOCKET`（回退：`SHUSH_SOCKET`）
+- 环境变量：`ONESSH_AGENT_CAPABILITY`（回退：`SHUSH_CAPABILITY`）
 
 内存 agent 行为：
 
@@ -233,6 +235,7 @@ onessh ls --tag prod --filter "cn-*"
 - 首次成功输入主密码后自动拉起 agent。
 - 也可手动管理：`onessh agent start|status|stop|clear-all`。
 - 可使用 `onessh logout --all` 清空 onessh 的全部主密码缓存条目。
+- 配置 capability 后，所有 agent 请求（含 askpass token 流程）都必须携带同一 token。
 
 密码认证说明：
 

@@ -25,6 +25,7 @@ func newPassphraseAgentClient(
 	ttl time.Duration,
 	disabled bool,
 	customSocket string,
+	customCapability string,
 ) (passphraseAgentClient, error) {
 	if disabled {
 		return passphraseAgentClient{}, nil
@@ -35,6 +36,7 @@ func newPassphraseAgentClient(
 	}
 	normalizedTTL := normalizeTTL(ttl)
 	client := shush.NewClient(socketPath, cacheKey, normalizedTTL)
+	client.Capability = resolveAgentCapability(customCapability)
 	if exePath, exeErr := os.Executable(); exeErr == nil {
 		client.ServeArgs = []string{exePath, "agent", "serve", "--socket"}
 	}
@@ -68,7 +70,7 @@ func (c passphraseAgentClient) Clear() error {
 	return c.client.Clear()
 }
 
-func registerAskPassToken(socketPath, password string, ttl time.Duration, maxUses int) (string, func(), error) {
+func registerAskPassToken(socketPath, password string, ttl time.Duration, maxUses int, capability string) (string, func(), error) {
 	if strings.TrimSpace(password) == "" {
 		return "", nil, errors.New("password auth requires non-empty password")
 	}
@@ -83,11 +85,11 @@ func registerAskPassToken(socketPath, password string, ttl time.Duration, maxUse
 		normalizedMaxUses = maxUses
 	}
 
-	return shush.RegisterToken(socketPath, password, normalizedTTL, normalizedMaxUses)
+	return shush.RegisterTokenWithCapability(socketPath, resolveAgentCapability(capability), password, normalizedTTL, normalizedMaxUses)
 }
 
-func resolveAskPassTokenSecret(socketPath, token string) (string, error) {
-	return shush.ResolveToken(socketPath, token)
+func resolveAskPassTokenSecret(socketPath, token, capability string) (string, error) {
+	return shush.ResolveTokenWithCapability(socketPath, resolveAgentCapability(capability), token)
 }
 
 func resolveAgentSocketPath(custom string) (string, error) {
@@ -107,30 +109,54 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	return filepath.Join(homeDir, ".config", "onessh", "agent.sock"), nil
 }
 
-func startPassphraseAgentProcess(socketPath string) error {
+func startPassphraseAgentProcess(socketPath, capability string) error {
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
-	return shush.StartProcess(
+	return shush.StartProcessWithCapability(
 		socketPath,
 		[]string{exePath, "agent", "serve", "--socket"},
+		resolveAgentCapability(capability),
 	)
 }
 
-func pingPassphraseAgent(socketPath string) error {
-	return shush.Ping(socketPath)
+func pingPassphraseAgent(socketPath, capability string) error {
+	return shush.PingWithCapability(socketPath, resolveAgentCapability(capability))
 }
 
-func requestPassphraseAgentStop(socketPath string) error {
-	return shush.Stop(socketPath)
+func requestPassphraseAgentStop(socketPath, capability string) error {
+	return shush.StopWithCapability(socketPath, resolveAgentCapability(capability))
 }
 
-func clearPassphraseAgentAll(socketPath string) error {
-	return shush.ClearAll(socketPath)
+func clearPassphraseAgentAll(socketPath, capability string) error {
+	return runWithCapabilityEnv(resolveAgentCapability(capability), func() error {
+		return shush.ClearAll(socketPath)
+	})
 }
 
-func clearPassphraseCacheByPrefix(socketPath, prefix string) error {
+func clearPassphraseCacheByPrefix(socketPath, prefix, capability string) error {
 	client := shush.NewClient(socketPath, "", defaultCacheTTL)
+	client.Capability = resolveAgentCapability(capability)
 	return client.ClearPrefix(prefix)
+}
+
+func runWithCapabilityEnv(capability string, fn func() error) error {
+	capability = strings.TrimSpace(capability)
+	if capability == "" {
+		return fn()
+	}
+
+	original, existed := os.LookupEnv(shush.EnvCapability)
+	if err := os.Setenv(shush.EnvCapability, capability); err != nil {
+		return err
+	}
+	defer func() {
+		if existed {
+			_ = os.Setenv(shush.EnvCapability, original)
+			return
+		}
+		_ = os.Unsetenv(shush.EnvCapability)
+	}()
+	return fn()
 }

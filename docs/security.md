@@ -29,6 +29,7 @@ This blocks malicious metadata from forcing extreme resource usage.
 - Cache backend: memory-only agent (no file cache compatibility).
 - Cache storage: in-memory map with TTL per config path.
 - Access control: Unix socket peer UID must match agent process UID.
+- Optional hardening: capability token can be required on every IPC request.
 
 ### Flow
 
@@ -105,6 +106,7 @@ Mitigated:
 
 - disk leakage of cached master password (no file cache backend)
 - cross-UID socket access to memory agent
+- accidental same-UID misuse when capability token is enabled
 - env-var leakage of SSH password in normal paths
 - accidental plain dump leakage (default redaction)
 - KDF parameter abuse from tampered metadata
