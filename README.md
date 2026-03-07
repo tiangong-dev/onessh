@@ -16,8 +16,8 @@ The data directory is safe to push to a **public** Git repository — all sensit
 - `onessh ls [--tag <tag>] [--filter <glob>]` list hosts with summary; filter by tag or glob pattern
 - `onessh show <alias>` show detailed information for a host
 - `onessh user ls / add / update / rm` manage reusable user profiles
-- `onessh logout` clear cached master password
-- `onessh agent start|stop|status` manage in-memory cache agent
+- `onessh logout [--all]` clear cached master password (or all cached master passwords)
+- `onessh agent start|stop|status|clear-all` manage in-memory cache agent
 - Hosts reference reusable user profiles via `user_ref`; auth lives at the profile level
 - Host-level `env`, `pre_connect` / `post_connect` hooks, `tags`
 - Master password cached for 10 minutes by default
@@ -225,18 +225,23 @@ Override options:
 - CLI flag: `--cache-ttl 10m` (default: 10 minutes)
 - CLI flag: `--no-cache` to disable cache
 - CLI flag: `--agent-socket /path/to/agent.sock`
-- Environment variable: `ONESSH_AGENT_SOCKET`
+- Environment variable: `ONESSH_AGENT_SOCKET` (fallback: `SHUSH_SOCKET`)
+- Environment variable: `ONESSH_AGENT_DIAL_TIMEOUT_MS` (optional agent dial timeout in milliseconds)
+- Environment variable: `ONESSH_AGENT_REQUEST_TIMEOUT_MS` (optional agent request timeout in milliseconds)
+- Environment variable: `ONESSH_AGENT_STARTUP_TIMEOUT_MS` (optional agent startup timeout in milliseconds)
+- Environment variable: `ONESSH_AGENT_STARTUP_PROBE_INTERVAL_MS` (optional agent startup probe interval in milliseconds)
 
 Memory backend behavior:
 
 - Master password cache is memory-agent only (no file cache).
 - Agent auto-starts on first successful password entry.
-- Manage manually via `onessh agent start|status|stop`.
+- Manage manually via `onessh agent start|status|stop|clear-all`.
+- Use `onessh logout --all` to wipe all onessh master-password cache entries.
 
 Password auth note:
 
 - Password auth first tries `sshpass -d` (FD-based, no secret env var).
-- If `sshpass` is unavailable, falls back to `SSH_ASKPASS` + onessh agent IPC token (short-lived).
+- If `sshpass` is unavailable, falls back to `SSH_ASKPASS` + onessh agent IPC token (short-lived and low-use by default).
 
 ## Store Layout
 

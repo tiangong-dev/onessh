@@ -3,13 +3,15 @@ package cli
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 const (
-	cacheBackendMemory = "memory"
-	defaultCacheTTL    = 10 * time.Minute
+	cacheBackendMemory         = "memory"
+	defaultCacheTTL            = 10 * time.Minute
+	passphraseCacheKeyPrefixV1 = "onessh:passphrase:v1:"
 )
 
 type passphraseStore interface {
@@ -23,6 +25,9 @@ func defaultAgentSocketFlagValue() string {
 	if raw := strings.TrimSpace(os.Getenv("ONESSH_AGENT_SOCKET")); raw != "" {
 		return raw
 	}
+	if raw := strings.TrimSpace(os.Getenv("SHUSH_SOCKET")); raw != "" {
+		return raw
+	}
 	return ""
 }
 
@@ -30,7 +35,7 @@ func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) 
 	if o == nil {
 		return nil, errors.New("root options are required")
 	}
-	return newPassphraseAgentClient(dataPath, o.cacheTTL, o.noCache, o.agentSocket)
+	return newPassphraseAgentClient(passphraseCacheKey(dataPath), o.cacheTTL, o.noCache, o.agentSocket)
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {
@@ -38,4 +43,26 @@ func normalizeTTL(ttl time.Duration) time.Duration {
 		return defaultCacheTTL
 	}
 	return ttl
+}
+
+func canonicalCacheKey(dataPath string) string {
+	path := strings.TrimSpace(dataPath)
+	if path == "" {
+		return ""
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		return filepath.Clean(resolvedPath)
+	}
+	return filepath.Clean(absPath)
+}
+
+func passphraseCacheKey(dataPath string) string {
+	return passphraseCacheKeyPrefixV1 + canonicalCacheKey(dataPath)
 }

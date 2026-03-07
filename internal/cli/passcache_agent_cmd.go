@@ -20,6 +20,7 @@ func newAgentCmd(opts *rootOptions) *cobra.Command {
 		newAgentServeCmd(opts),
 		newAgentStartCmd(opts),
 		newAgentStopCmd(opts),
+		newAgentClearAllCmd(opts),
 		newAgentStatusCmd(opts),
 	)
 	return cmd
@@ -108,6 +109,30 @@ func newAgentStatusCmd(opts *rootOptions) *cobra.Command {
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "running (%s)\n", socketPath)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&socket, "socket", "", "Agent Unix socket path")
+	return cmd
+}
+
+func newAgentClearAllCmd(opts *rootOptions) *cobra.Command {
+	var socket string
+
+	cmd := &cobra.Command{
+		Use:   "clear-all",
+		Short: "Clear all cached secrets and askpass tokens",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			socketPath, err := resolveAgentSocketPath(resolveSocketFlag(socket, opts))
+			if err != nil {
+				return err
+			}
+			if err := clearPassphraseAgentAll(socketPath); err != nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "✔ agent cache cleared")
 			return nil
 		},
 	}
