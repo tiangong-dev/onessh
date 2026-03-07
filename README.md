@@ -67,18 +67,21 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 When adding a host, you can create a new user profile or select an existing one.
 
-## Workflow
+## Internal Workflow
 
-Typical day-to-day flow:
+OneSSH runtime pipeline (implementation-oriented):
 
-1. **Bootstrap once**: `onessh init` and `onessh add <alias>`.
-2. **Run commands normally**: `onessh <alias>`, `onessh exec`, `onessh cp`, `onessh test`.
-3. **Unlock on first access**: OneSSH prompts for the master password, decrypts store data, and auto-starts the in-memory agent.
-4. **Reuse in-session cache**: later commands in the same shell session reuse cached master password (TTL-based) without re-prompt.
-5. **Clear when done**: use `onessh logout` (current store), `onessh logout --all`, or `onessh agent clear-all`.
+1. **Context resolution**: parse CLI flags/env, resolve data path, and derive default agent socket/capability from parent shell PID when not explicitly configured.
+2. **Cache namespace setup**: canonicalize data path and build a namespaced cache key (`onessh:passphrase:v1:<canonical-path>`).
+3. **Master passphrase retrieval**:
+   - try memory agent first;
+   - on cache miss, prompt once, decrypt store, then write back to memory agent with TTL.
+4. **Command execution path**:
+   - key auth: use `ssh/scp` with selected key;
+   - password auth: prefer `sshpass -d` (FD pipe), fallback to `SSH_ASKPASS` + short-lived IPC token.
+5. **Security cleanup**: wipe transient secrets in memory and clear stale cache entries on decryption failure.
 
-By default, agent socket/capability are derived from parent shell PID, so different terminal windows are isolated by default.
-For security design details, see [`docs/security.md`](docs/security.md).
+Detailed internals, flowcharts, and threat-model notes: [`docs/security.md`](docs/security.md).
 
 ## Shell Completion
 

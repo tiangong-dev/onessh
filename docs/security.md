@@ -2,28 +2,39 @@
 
 This document summarizes the current security design, execution flow, and key mitigations.
 
-## 0. End-to-End Workflow (Operator View)
+## 0. Internal Runtime Workflow
 
 ```mermaid
 flowchart TD
-  A["onessh command"] --> B["Resolve host/user config path"]
-  B --> C{"Master password in agent cache?"}
-  C -- "Yes" --> D["Decrypt config and continue"]
-  C -- "No" --> E["Prompt master password"]
-  E --> F["Decrypt config"]
-  F --> G["Store passphrase in memory agent (TTL)"]
-  G --> D
-  D --> H{"Auth type"}
-  H -- "key" --> I["ssh/scp with key"]
-  H -- "password + sshpass" --> J["sshpass -d via FD pipe"]
-  H -- "password no sshpass" --> K["SSH_ASKPASS + short-lived token"]
+  A["CLI entrypoint"] --> B["Parse flags/env"]
+  B --> C["Resolve data path + agent socket"]
+  C --> D["Resolve capability (flag/env/default ppid-derived)"]
+  D --> E["Build canonical cache key per data path"]
+  E --> F{"Passphrase in memory agent?"}
+  F -- "hit" --> G["Load/decrypt config"]
+  F -- "miss" --> H["Prompt master password"]
+  H --> I["Load/decrypt config"]
+  I --> J["Cache passphrase in memory agent (TTL)"]
+  J --> G
+  G --> K{"Command kind"}
+  K -- "connect/exec/cp/test" --> L{"Auth type"}
+  L -- "key" --> M["exec ssh/scp with key options"]
+  L -- "password + sshpass available" --> N["exec sshpass -d with FD pipe"]
+  L -- "password + no sshpass" --> O["issue short-lived askpass IPC token"]
+  O --> P["spawn SSH_ASKPASS helper"]
+  K -- "config ops" --> Q["save/update encrypted store"]
+  M --> R["wipe transient buffers"]
+  N --> R
+  P --> R
+  Q --> R
 ```
 
-Operational notes:
+Implementation notes:
 
-- Agent socket and capability are session-scoped by default (derived from parent shell PID).
-- Secrets remain memory-only; no plaintext credential cache is written to disk.
-- Use `onessh logout`, `onessh logout --all`, or `onessh agent clear-all` to proactively clear runtime cache.
+- Default session namespace is based on parent shell PID, which isolates agent socket/capability across terminal sessions by default.
+- Cache key namespace is bound to canonical data path to prevent accidental cross-store passphrase reuse.
+- If cached passphrase fails decryption, OneSSH clears that cache entry before re-prompting.
+- Secrets remain memory-only; OneSSH does not persist plaintext credential cache to disk.
 
 ## 1. Data At Rest Encryption
 

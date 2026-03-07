@@ -67,18 +67,21 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 添加主机时，可以输入新 user（创建新 profile），也可以直接选择已有 profile。
 
-## 工作流程
+## 内部工作流程
 
-日常使用建议按以下流程：
+OneSSH 的运行链路（偏实现视角）：
 
-1. **初始化一次**：执行 `onessh init`，然后 `onessh add <alias>`。
-2. **按需执行命令**：使用 `onessh <alias>`、`onessh exec`、`onessh cp`、`onessh test`。
-3. **首次访问解锁**：OneSSH 会提示输入主密码，解密配置并自动拉起内存 agent。
-4. **会话内复用缓存**：同一 shell 会话后续命令复用 TTL 缓存，一般无需重复输入主密码。
-5. **结束后清理**：可使用 `onessh logout`（当前仓库）、`onessh logout --all` 或 `onessh agent clear-all`。
+1. **上下文解析**：解析命令行参数/环境变量；若未显式配置，则基于父 shell PID 派生默认 agent socket/capability。
+2. **缓存命名空间构建**：对 data path 做 canonicalize，生成命名空间缓存 key（`onessh:passphrase:v1:<canonical-path>`）。
+3. **主密码获取**：
+   - 先从内存 agent 读取；
+   - 未命中则提示输入主密码，解密配置后按 TTL 回写内存 agent。
+4. **命令执行分支**：
+   - key 认证：使用 `ssh/scp` + 指定私钥；
+   - password 认证：优先 `sshpass -d`（FD 管道），回退 `SSH_ASKPASS` + 短时 IPC token。
+5. **安全清理**：清除临时敏感内存；解密失败时移除陈旧缓存条目。
 
-默认情况下，agent 的 socket/capability 基于父 shell PID 自动派生，不同终端窗口默认隔离。
-完整安全设计与流程图见：[`docs/security.md`](docs/security.md)。
+完整内部机制、流程图与威胁模型说明见：[`docs/security.md`](docs/security.md)。
 
 ## Shell 补全
 
