@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,8 +13,8 @@ import (
 )
 
 const (
-	defaultAskPassTTL     = 2 * time.Minute
-	defaultAskPassMaxUses = 8
+	defaultAskPassTTL     = 30 * time.Second
+	defaultAskPassMaxUses = 2
 )
 
 type passphraseAgentClient struct {
@@ -33,7 +35,7 @@ func newPassphraseAgentClient(
 		return passphraseAgentClient{}, err
 	}
 	normalizedTTL := normalizeTTL(ttl)
-	client := shush.NewClient(socketPath, dataPath, normalizedTTL)
+	client := shush.NewClientWithOptions(socketPath, dataPath, normalizedTTL, shushClientOptionsFromEnv())
 	if exePath, exeErr := os.Executable(); exeErr == nil {
 		client.ServeArgs = []string{exePath, "agent", "serve", "--socket"}
 	}
@@ -68,11 +70,25 @@ func (c passphraseAgentClient) Clear() error {
 }
 
 func registerAskPassToken(socketPath, password string, ttl time.Duration, maxUses int) (string, func(), error) {
-	return shush.RegisterToken(socketPath, password, ttl, maxUses)
+	if strings.TrimSpace(password) == "" {
+		return "", nil, errors.New("password auth requires non-empty password")
+	}
+
+	// Start from short-lived single-use defaults, then apply caller policy.
+	opts := shush.NewShortLivedSingleUseTokenOptions()
+	if ttl > 0 {
+		opts.TTL = ttl
+	}
+	if maxUses > 0 {
+		opts.MaxUses = maxUses
+	}
+	opts.ClientOptions = shushClientOptionsFromEnv()
+
+	return shush.RegisterTokenWithOptions(socketPath, password, opts)
 }
 
 func resolveAskPassTokenSecret(socketPath, token string) (string, error) {
-	return shush.ResolveToken(socketPath, token)
+	return shush.ResolveTokenWithOptions(socketPath, token, shushClientOptionsFromEnv())
 }
 
 func resolveAgentSocketPath(custom string) (string, error) {
@@ -97,21 +113,47 @@ func startPassphraseAgentProcess(socketPath string) error {
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
-	return shush.StartProcess(socketPath, []string{exePath, "agent", "serve", "--socket"})
+	return shush.StartProcessWithOptions(
+		socketPath,
+		[]string{exePath, "agent", "serve", "--socket"},
+		shushClientOptionsFromEnv(),
+	)
 }
 
 func pingPassphraseAgent(socketPath string) error {
-	return shush.Ping(socketPath)
+	return shush.PingWithOptions(socketPath, shushClientOptionsFromEnv())
 }
 
 func requestPassphraseAgentStop(socketPath string) error {
-	return shush.Stop(socketPath)
+	return shush.StopWithOptions(socketPath, shushClientOptionsFromEnv())
 }
 
 func clearPassphraseAgentAll(socketPath string) error {
-	return shush.ClearAll(socketPath)
+	return shush.ClearAllWithOptions(socketPath, shushClientOptionsFromEnv())
 }
 
 func clearPassphraseCacheByPrefix(socketPath, prefix string) error {
-	return shush.ClearPrefix(socketPath, prefix)
+	client := shush.NewClientWithOptions(socketPath, "", defaultCacheTTL, shushClientOptionsFromEnv())
+	return client.ClearPrefix(prefix)
+}
+
+func shushClientOptionsFromEnv() shush.ClientOptions {
+	return shush.ClientOptions{
+		DialTimeout:          envDurationMillis("ONESSH_AGENT_DIAL_TIMEOUT_MS"),
+		RequestTimeout:       envDurationMillis("ONESSH_AGENT_REQUEST_TIMEOUT_MS"),
+		StartupTimeout:       envDurationMillis("ONESSH_AGENT_STARTUP_TIMEOUT_MS"),
+		StartupProbeInterval: envDurationMillis("ONESSH_AGENT_STARTUP_PROBE_INTERVAL_MS"),
+	}
+}
+
+func envDurationMillis(key string) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
 }

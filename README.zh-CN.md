@@ -226,6 +226,10 @@ onessh ls --tag prod --filter "cn-*"
 - 命令参数：`--no-cache` 禁用缓存
 - 命令参数：`--agent-socket /path/to/agent.sock`
 - 环境变量：`ONESSH_AGENT_SOCKET`（回退：`SHUSH_SOCKET`）
+- 环境变量：`ONESSH_AGENT_DIAL_TIMEOUT_MS`（可选，agent 拨号超时，毫秒）
+- 环境变量：`ONESSH_AGENT_REQUEST_TIMEOUT_MS`（可选，agent 请求超时，毫秒）
+- 环境变量：`ONESSH_AGENT_STARTUP_TIMEOUT_MS`（可选，agent 启动等待超时，毫秒）
+- 环境变量：`ONESSH_AGENT_STARTUP_PROBE_INTERVAL_MS`（可选，agent 启动探测间隔，毫秒）
 
 内存 agent 行为：
 
@@ -237,7 +241,7 @@ onessh ls --tag prod --filter "cn-*"
 密码认证说明：
 
 - 优先使用 `sshpass -d`（基于 FD 传递，不暴露环境变量）。
-- 若无 `sshpass`，回退到 `SSH_ASKPASS` + onessh agent IPC token（短时有效）。
+- 若无 `sshpass`，回退到 `SSH_ASKPASS` + onessh agent IPC token（默认短时且低次数）。
 
 ## 存储结构
 

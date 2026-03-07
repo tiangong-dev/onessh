@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tiangong-dev/shush"
 )
 
 func TestAgentClearAllCmdClearsSecretsAndTokens(t *testing.T) {
@@ -58,6 +60,10 @@ func TestLogoutAllClearsAgentWithoutRepositoryAccess(t *testing.T) {
 		t.Fatalf("registerAskPassToken: %v", err)
 	}
 	defer cleanupToken()
+	otherClient := shush.NewClient(socketPath, "external:test:key", time.Minute)
+	if err := otherClient.Set([]byte("external-secret")); err != nil {
+		t.Fatalf("otherClient.Set: %v", err)
+	}
 
 	cmd := newLogoutCmd(&rootOptions{agentSocket: socketPath})
 	var out bytes.Buffer
@@ -77,4 +83,9 @@ func TestLogoutAllClearsAgentWithoutRepositoryAccess(t *testing.T) {
 	if _, err := resolveAskPassTokenSecret(socketPath, token); err != nil {
 		t.Fatalf("expected askpass token to remain available, got err=%v", err)
 	}
+	externalSecret, ok, err := otherClient.Get()
+	if err != nil || !ok || string(externalSecret) != "external-secret" {
+		t.Fatalf("expected external key to remain, ok=%v got=%q err=%v", ok, string(externalSecret), err)
+	}
+	shush.Wipe(externalSecret)
 }
