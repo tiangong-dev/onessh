@@ -45,7 +45,7 @@ func TestAgentClearAllCmdClearsSecretsAndTokens(t *testing.T) {
 func TestLogoutAllClearsAgentWithoutRepositoryAccess(t *testing.T) {
 	socketPath := startTestPassphraseAgent(t)
 
-	client, err := newPassphraseAgentClient("/tmp/config-logout-all.enc", time.Minute, false, socketPath)
+	client, err := newPassphraseAgentClient(passphraseCacheKey("/tmp/config-logout-all.enc"), time.Minute, false, socketPath)
 	if err != nil {
 		t.Fatalf("newPassphraseAgentClient: %v", err)
 	}
@@ -67,14 +67,14 @@ func TestLogoutAllClearsAgentWithoutRepositoryAccess(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("logout --all command: %v", err)
 	}
-	if !strings.Contains(out.String(), "all agent cache entries cleared") {
+	if !strings.Contains(out.String(), "all cached master passwords cleared") {
 		t.Fatalf("expected success output, got %q", out.String())
 	}
 
 	if got, ok, err := client.Get(); err != nil || ok || len(got) != 0 {
 		t.Fatalf("expected secret to be cleared, got ok=%v len=%d err=%v", ok, len(got), err)
 	}
-	if _, err := resolveAskPassTokenSecret(socketPath, token); err == nil {
-		t.Fatalf("expected token to be cleared")
+	if _, err := resolveAskPassTokenSecret(socketPath, token); err != nil {
+		t.Fatalf("expected askpass token to remain available, got err=%v", err)
 	}
 }

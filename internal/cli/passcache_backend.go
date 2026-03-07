@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	cacheBackendMemory = "memory"
-	defaultCacheTTL    = 10 * time.Minute
+	cacheBackendMemory         = "memory"
+	defaultCacheTTL            = 10 * time.Minute
+	passphraseCacheKeyPrefixV1 = "onessh:passphrase:v1:"
 )
 
 type passphraseStore interface {
@@ -34,7 +35,7 @@ func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) 
 	if o == nil {
 		return nil, errors.New("root options are required")
 	}
-	return newPassphraseAgentClient(canonicalCacheKey(dataPath), o.cacheTTL, o.noCache, o.agentSocket)
+	return newPassphraseAgentClient(passphraseCacheKey(dataPath), o.cacheTTL, o.noCache, o.agentSocket)
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {
@@ -60,4 +61,8 @@ func canonicalCacheKey(dataPath string) string {
 		return filepath.Clean(resolvedPath)
 	}
 	return filepath.Clean(absPath)
+}
+
+func passphraseCacheKey(dataPath string) string {
+	return passphraseCacheKeyPrefixV1 + canonicalCacheKey(dataPath)
 }

@@ -344,11 +344,11 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := clearPassphraseAgentAll(socketPath); err != nil {
+				if err := clearPassphraseCacheByPrefix(socketPath, passphraseCacheKeyPrefixV1); err != nil {
 					fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
 					return nil
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), "✔ all agent cache entries cleared")
+				fmt.Fprintln(cmd.OutOrStdout(), "✔ all cached master passwords cleared")
 				return nil
 			}
 
@@ -373,7 +373,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&clearAll, "all", false, "Clear all agent cache entries and askpass tokens")
+	cmd.Flags().BoolVar(&clearAll, "all", false, "Clear all cached master passwords in the agent")
 	return cmd
 }
 

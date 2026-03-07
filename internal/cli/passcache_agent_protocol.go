@@ -111,3 +111,7 @@ func requestPassphraseAgentStop(socketPath string) error {
 func clearPassphraseAgentAll(socketPath string) error {
 	return shush.ClearAll(socketPath)
 }
+
+func clearPassphraseCacheByPrefix(socketPath, prefix string) error {
+	return shush.ClearPrefix(socketPath, prefix)
+}
