@@ -827,9 +827,15 @@ func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, 
 			return store.AuthConfig{}, errors.New("--key-path is only valid when --auth-type=key")
 		}
 		if strings.TrimSpace(password) == "" {
-			return store.AuthConfig{}, errors.New("password is required when auth-type=password")
+			prompted, err := promptRequiredPassword("SSH password: ")
+			if err != nil {
+				return store.AuthConfig{}, err
+			}
+			auth.Password = string(prompted)
+			wipe(prompted)
+		} else {
+			auth.Password = password
 		}
-		auth.Password = password
 	default:
 		return store.AuthConfig{}, errors.New("auth-type must be key or password")
 	}

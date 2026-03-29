@@ -875,7 +875,12 @@ func authConfigFromFlagValues(
 				pw = current.Password
 			}
 			if strings.TrimSpace(pw) == "" {
-				return store.AuthConfig{}, errors.New("password auth requires --password or existing password")
+				prompted, err := promptRequiredPassword("SSH password: ")
+				if err != nil {
+					return store.AuthConfig{}, err
+				}
+				pw = string(prompted)
+				wipe(prompted)
 			}
 			return store.AuthConfig{Type: "password", Password: pw}, nil
 		}
