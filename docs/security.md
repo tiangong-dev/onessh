@@ -85,13 +85,7 @@ Token controls:
 - bounded max uses
 - explicit cleanup after command exit
 
-## 4. Dump Command Safety
-
-- `onessh dump` is redacted by default.
-- Passwords and host env values are replaced with `[REDACTED]`.
-- `--show-secrets` is required for full plaintext output.
-
-## 5. Reset Safety (`init --force`)
+## 4. Reset Safety (`init --force`)
 
 `SaveWithReset` path is validated before recursive deletion:
 
@@ -102,7 +96,7 @@ Token controls:
 
 This reduces accidental destructive deletions caused by wrong config path.
 
-## 6. Current Threat Model Notes
+## 5. Current Threat Model Notes
 
 Mitigated:
 
