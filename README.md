@@ -17,6 +17,7 @@ The data directory is safe to push to a **public** Git repository — all sensit
 - `onessh show <alias>` show detailed information for a host
 - `onessh user ls / add / update / rm` manage reusable user profiles
 - `onessh logout [--all]` clear cached master password (or all cached master passwords)
+- `onessh log [--last N] [--action <type>] [--alias <alias>]` view audit log; subcommands `enable / disable / status` manage default toggle
 - `onessh agent start|stop|status|clear-all` manage in-memory cache agent
 - Hosts reference reusable user profiles via `user_ref`; auth lives at the profile level
 - Host-level `env`, `pre_connect` / `post_connect` hooks, `tags`
