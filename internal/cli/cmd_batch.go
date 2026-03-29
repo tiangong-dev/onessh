@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"sync"
+	"sync/atomic"
 
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 type batchResult struct {
@@ -21,9 +24,14 @@ type batchResult struct {
 type batchRunner func(alias string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult
 
 func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, parallel int, fn batchRunner) bool {
-	results := make([]batchResult, len(aliases))
+	total := len(aliases)
+	results := make([]batchResult, total)
 	sem := make(chan struct{}, max(1, parallel))
 	var wg sync.WaitGroup
+
+	showProgress := term.IsTerminal(int(os.Stderr.Fd()))
+	var completed atomic.Int32
+
 	for i, alias := range aliases {
 		wg.Add(1)
 		go func(i int, alias string) {
@@ -34,12 +42,20 @@ func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, paral
 			userName, auth, err := resolveHostIdentity(cfg, host)
 			if err != nil {
 				results[i] = batchResult{skip: true, err: err}
-				return
+			} else {
+				results[i] = fn(alias, host, userName, auth)
 			}
-			results[i] = fn(alias, host, userName, auth)
+			n := completed.Add(1)
+			if showProgress {
+				fmt.Fprintf(os.Stderr, "\r[%d/%d] completed", n, total)
+			}
 		}(i, alias)
 	}
 	wg.Wait()
+
+	if showProgress {
+		fmt.Fprint(os.Stderr, "\r\033[K")
+	}
 
 	return printBatchResults(cmd.OutOrStdout(), cmd.ErrOrStderr(), aliases, results)
 }
