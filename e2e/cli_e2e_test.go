@@ -332,6 +332,335 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
+func TestCLIUpdate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
+	}
+	requireScript(t)
+
+	baseDir := t.TempDir()
+	dataDir := filepath.Join(baseDir, "data")
+	socketPath := filepath.Join(baseDir, "agent.sock")
+	capability := "e2e-capability-update"
+	password := "Passw0rd!U"
+
+	bootstrapStoreWithHost(t, dataDir, socketPath, capability, password)
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+	}()
+
+	updateOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"update", "web1",
+		"--port", "2222",
+	)
+	if err != nil {
+		t.Fatalf("run update: %v\n%s", err, updateOut)
+	}
+	if !strings.Contains(updateOut, "host web1 updated") {
+		t.Fatalf("unexpected update output: %q", updateOut)
+	}
+
+	showOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"show", "web1",
+	)
+	if err != nil {
+		t.Fatalf("run show after update: %v\n%s", err, showOut)
+	}
+	if !strings.Contains(showOut, "2222") {
+		t.Fatalf("expected port 2222 in show output: %q", showOut)
+	}
+}
+
+func TestCLIRm(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
+	}
+	requireScript(t)
+
+	baseDir := t.TempDir()
+	dataDir := filepath.Join(baseDir, "data")
+	socketPath := filepath.Join(baseDir, "agent.sock")
+	capability := "e2e-capability-rm"
+	password := "Passw0rd!R"
+
+	bootstrapStoreWithHost(t, dataDir, socketPath, capability, password)
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+	}()
+
+	rmOutPath := filepath.Join(baseDir, "rm.out")
+	rmCmd := shellCommand(
+		builtBinaryPath,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"rm", "web1",
+	) + " > " + shellQuote(rmOutPath)
+	// Answer "no" to the prompt about deleting the user profile
+	if _, err := runWithTTY(baseDir, rmCmd, "n\n"); err != nil {
+		t.Fatalf("run rm with tty: %v", err)
+	}
+
+	rmOut := mustReadFile(t, rmOutPath)
+	if !strings.Contains(rmOut, "host web1 removed") {
+		t.Fatalf("unexpected rm output: %q", rmOut)
+	}
+
+	lsOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"ls",
+	)
+	if err != nil {
+		t.Fatalf("run ls after rm: %v\n%s", err, lsOut)
+	}
+	if strings.Contains(lsOut, "web1") {
+		t.Fatalf("expected web1 to be gone from ls output: %q", lsOut)
+	}
+}
+
+func TestCLIPasswd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
+	}
+	requireScript(t)
+
+	baseDir := t.TempDir()
+	dataDir := filepath.Join(baseDir, "data")
+	socketPath := filepath.Join(baseDir, "agent.sock")
+	capability := "e2e-capability-passwd"
+	oldPassword := "Passw0rd!Old"
+	newPassword := "Passw0rd!New"
+
+	bootstrapStoreWithHost(t, dataDir, socketPath, capability, oldPassword)
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+	}()
+
+	// Change password
+	passwdOutPath := filepath.Join(baseDir, "passwd.out")
+	passwdCmd := shellCommand(
+		builtBinaryPath,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"passwd",
+	) + " > " + shellQuote(passwdOutPath)
+	passwdInput := oldPassword + "\n" + newPassword + "\n" + newPassword + "\n"
+	if _, err := runWithTTY(baseDir, passwdCmd, passwdInput); err != nil {
+		t.Fatalf("run passwd with tty: %v", err)
+	}
+
+	passwdOut := mustReadFile(t, passwdOutPath)
+	if !strings.Contains(passwdOut, "master password updated") {
+		t.Fatalf("unexpected passwd output: %q", passwdOut)
+	}
+
+	// Stop the agent to clear cached passphrase, then start fresh
+	_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+
+	socketPath2 := filepath.Join(baseDir, "agent2.sock")
+	capability2 := "e2e-capability-passwd2"
+	_, err := runOnessh(baseDir, "--agent-socket", socketPath2, "--agent-capability", capability2, "agent", "start")
+	if err != nil {
+		t.Fatalf("start fresh agent: %v", err)
+	}
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath2, "--agent-capability", capability2, "agent", "stop")
+	}()
+
+	// Old password should fail
+	oldPassLsPath := filepath.Join(baseDir, "old-pass-ls.out")
+	oldPassCmd := shellCommand(
+		builtBinaryPath,
+		"--data", dataDir,
+		"--agent-socket", socketPath2,
+		"--agent-capability", capability2,
+		"ls",
+	) + " > " + shellQuote(oldPassLsPath) + " 2>&1"
+	if _, err := runWithTTY(baseDir, oldPassCmd, oldPassword+"\n"); err == nil {
+		oldPassOut := mustReadFile(t, oldPassLsPath)
+		if strings.Contains(oldPassOut, "web1") {
+			t.Fatalf("old password should not work after passwd change")
+		}
+	}
+
+	// New password should work
+	newPassLsPath := filepath.Join(baseDir, "new-pass-ls.out")
+	newPassCmd := shellCommand(
+		builtBinaryPath,
+		"--data", dataDir,
+		"--agent-socket", socketPath2,
+		"--agent-capability", capability2,
+		"ls",
+	) + " > " + shellQuote(newPassLsPath)
+	if _, err := runWithTTY(baseDir, newPassCmd, newPassword+"\n"); err != nil {
+		t.Fatalf("ls with new password: %v", err)
+	}
+	newPassOut := mustReadFile(t, newPassLsPath)
+	if !strings.Contains(newPassOut, "web1") {
+		t.Fatalf("expected web1 in ls output with new password: %q", newPassOut)
+	}
+}
+
+func TestCLIUserAddListRm(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
+	}
+	requireScript(t)
+
+	baseDir := t.TempDir()
+	dataDir := filepath.Join(baseDir, "data")
+	socketPath := filepath.Join(baseDir, "agent.sock")
+	capability := "e2e-capability-user"
+	password := "Passw0rd!User"
+
+	bootstrapStoreWithHost(t, dataDir, socketPath, capability, password)
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+	}()
+
+	// user add
+	addOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"user", "add", "deployer",
+		"--name", "deploy",
+		"--auth-type", "key",
+		"--key-path", "/tmp/fake_deploy_key",
+	)
+	if err != nil {
+		t.Fatalf("run user add: %v\n%s", err, addOut)
+	}
+	if !strings.Contains(addOut, "user profile deployer added") {
+		t.Fatalf("unexpected user add output: %q", addOut)
+	}
+
+	// user ls
+	lsOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"user", "ls",
+	)
+	if err != nil {
+		t.Fatalf("run user ls: %v\n%s", err, lsOut)
+	}
+	if !strings.Contains(lsOut, "deployer") || !strings.Contains(lsOut, "deploy") {
+		t.Fatalf("expected deployer in user ls output: %q", lsOut)
+	}
+
+	// user rm
+	rmOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"user", "rm", "deployer",
+	)
+	if err != nil {
+		t.Fatalf("run user rm: %v\n%s", err, rmOut)
+	}
+	if !strings.Contains(rmOut, "user profile deployer removed") {
+		t.Fatalf("unexpected user rm output: %q", rmOut)
+	}
+
+	// verify user is gone from ls
+	lsAfterOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"user", "ls",
+	)
+	if err != nil {
+		t.Fatalf("run user ls after rm: %v\n%s", err, lsAfterOut)
+	}
+	if strings.Contains(lsAfterOut, "deployer") {
+		t.Fatalf("expected deployer to be gone from user ls: %q", lsAfterOut)
+	}
+}
+
+func TestCLILogEnableDisableStatus(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip e2e in short mode")
+	}
+	requireScript(t)
+
+	baseDir := t.TempDir()
+	dataDir := filepath.Join(baseDir, "data")
+	socketPath := filepath.Join(baseDir, "agent.sock")
+	capability := "e2e-capability-log"
+	password := "Passw0rd!Log"
+
+	bootstrapStoreWithHost(t, dataDir, socketPath, capability, password)
+	defer func() {
+		_, _ = runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "stop")
+	}()
+
+	// log enable
+	enableOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"log", "enable",
+	)
+	if err != nil {
+		t.Fatalf("run log enable: %v\n%s", err, enableOut)
+	}
+	if !strings.Contains(enableOut, "Audit logging enabled by default.") {
+		t.Fatalf("unexpected log enable output: %q", enableOut)
+	}
+
+	// log status (should be enabled)
+	statusOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"log", "status",
+	)
+	if err != nil {
+		t.Fatalf("run log status: %v\n%s", err, statusOut)
+	}
+	if !strings.Contains(statusOut, "Audit logging is enabled by default.") {
+		t.Fatalf("unexpected log status output: %q", statusOut)
+	}
+
+	// log disable
+	disableOut, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"log", "disable",
+	)
+	if err != nil {
+		t.Fatalf("run log disable: %v\n%s", err, disableOut)
+	}
+	if !strings.Contains(disableOut, "Audit logging disabled by default.") {
+		t.Fatalf("unexpected log disable output: %q", disableOut)
+	}
+
+	// log status (should be disabled)
+	statusOut2, err := runOnessh(baseDir,
+		"--data", dataDir,
+		"--agent-socket", socketPath,
+		"--agent-capability", capability,
+		"log", "status",
+	)
+	if err != nil {
+		t.Fatalf("run log status after disable: %v\n%s", err, statusOut2)
+	}
+	if !strings.Contains(statusOut2, "Audit logging is disabled by default.") {
+		t.Fatalf("unexpected log status output after disable: %q", statusOut2)
+	}
+}
+
 func findRepoRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
