@@ -2,6 +2,8 @@
 
 [中文](README.zh-CN.md)
 
+**Documentation (GitHub Pages):** [https://tiangong-dev.github.io/onessh/](https://tiangong-dev.github.io/onessh/)
+
 OneSSH is a CLI SSH manager built around a single master password. All host addresses, credentials, and configuration are encrypted at rest — you unlock everything once, then connect, run commands, and transfer files without ever typing credentials again.
 
 The data directory is safe to push to a **public** Git repository — all sensitive fields are encrypted with AES-256-GCM and the key is derived via Argon2id. Only the `ENC[...]` ciphertext is stored on disk; the master password never touches the filesystem. Use a **strong master password** (12+ characters, mixed case, digits, and symbols) to ensure brute-force resistance.

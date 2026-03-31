@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+**在线文档（GitHub Pages）：** [https://tiangong-dev.github.io/onessh/](https://tiangong-dev.github.io/onessh/)
+
 OneSSH 是一个以单一主密码为核心的 CLI SSH 管理工具。所有主机地址、凭证和配置均加密存储——解锁一次，即可连接主机、执行远程命令、传输文件，全程无需重复输入密码。
 
 数据目录可以安全地推送到**公开的** Git 仓库——所有敏感字段均通过 AES-256-GCM 加密，密钥由 Argon2id 从主密码派生，磁盘上仅保存 `ENC[...]` 密文，主密码永不落盘。请使用**高强度主密码**（建议 12 位以上，混合大小写、数字和符号）以确保抗暴力破解能力。
