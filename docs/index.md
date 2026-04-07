@@ -13,6 +13,9 @@ hero:
       text: Reference
       link: /reference/
     - theme: alt
+      text: 简体中文
+      link: /zh/
+    - theme: alt
       text: View on GitHub
       link: https://github.com/tiangong-dev/onessh
 
@@ -27,12 +30,14 @@ features:
 
 ## Documentation
 
-| Section | What you will find |
+| Section | Contents |
 | --- | --- |
-| [Guide](/guide/getting-started) | Install, first host, commands overview, configuration |
-| [Reference](/reference/) | Architecture and security design (detailed) |
+| [Guide](/guide/getting-started) | Install, commands overview, configuration |
+| [Reference](/reference/) | Architecture and security (in depth) |
 
-The [README](https://github.com/tiangong-dev/onessh/blob/main/README.md) is the long-form command reference with examples. 简体中文见 [README.zh-CN](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md).
+**Languages:** this site is available in [English](/) and [简体中文](/zh/).
+
+Longer command examples and edge cases still live in the [README](https://github.com/tiangong-dev/onessh/blob/main/README.md) on GitHub ([中文 README](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md)).
 
 ## Quick example
 
