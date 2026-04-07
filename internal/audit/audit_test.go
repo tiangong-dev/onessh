@@ -196,25 +196,32 @@ func TestRotateBySizeKeepsBoundedFiles(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	files, err := os.ReadDir(filepath.Dir(dataPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var currentCount int
-	var rotatedCount int
-	var compressedCount int
-	for _, f := range files {
-		name := f.Name()
-		switch {
-		case name == "audit.log":
-			currentCount++
-		case strings.HasPrefix(name, "audit-") && (strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz")):
-			rotatedCount++
-			if strings.HasSuffix(name, ".gz") {
-				compressedCount++
+	// lumberjack may compress backups asynchronously after Close; poll until stable or timeout.
+	auditDir := filepath.Dir(dataPath)
+	deadline := time.Now().Add(5 * time.Second)
+	var currentCount, rotatedCount, compressedCount int
+	for time.Now().Before(deadline) {
+		files, err := os.ReadDir(auditDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		currentCount, rotatedCount, compressedCount = 0, 0, 0
+		for _, f := range files {
+			name := f.Name()
+			switch {
+			case name == "audit.log":
+				currentCount++
+			case strings.HasPrefix(name, "audit-") && (strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz")):
+				rotatedCount++
+				if strings.HasSuffix(name, ".gz") {
+					compressedCount++
+				}
 			}
 		}
+		if currentCount == 1 && rotatedCount <= cfg.MaxBackups+1 && compressedCount > 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	if currentCount != 1 {
