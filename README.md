@@ -304,8 +304,8 @@ post_connect:
 - Encryption: Argon2id + AES-256-GCM
 - Only encrypted data is stored on disk (Git-friendly)
 - Master password and plaintext only exist in memory at runtime
-- Architecture and execution flow: [`docs/architecture.md`](docs/architecture.md)
-- Security model and mitigations: [`docs/security.md`](docs/security.md)
+- Architecture and execution flow: [`docs/reference/architecture.md`](docs/reference/architecture.md)
+- Security model and mitigations: [`docs/reference/security.md`](docs/reference/security.md)
 
 ## Automated Release (GitHub Actions)
 

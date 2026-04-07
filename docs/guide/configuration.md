@@ -45,4 +45,4 @@ Sensitive values are `ENC[...]` ciphertext. Structure stays readable for Git dif
 - Prefer `sshpass -d` when available (file descriptor, not environment).
 - Otherwise: `SSH_ASKPASS` with a short-lived onessh agent token.
 
-For encryption details and runtime security, see [Security](../security.md).
+For encryption details and runtime security, see [Security](/reference/security).

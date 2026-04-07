@@ -53,7 +53,6 @@ onessh web1 -- -L 8080:127.0.0.1:80 -N
 
 ## Next steps
 
-- [Commands](./commands.md) — full command reference overview
-- [Configuration](./configuration.md) — data path, agent, environment variables
-- [Architecture](../architecture.md) — design and execution flow
-- [Security](../security.md) — threat model and mitigations
+- [Commands](/guide/commands) — command overview
+- [Configuration](/guide/configuration) — data path, agent, environment variables
+- [Reference](/reference/) — architecture and security deep dives

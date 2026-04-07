@@ -304,8 +304,8 @@ post_connect:
 - 加密方案：Argon2id + AES-256-GCM
 - 磁盘仅保存密文，适合纳入 Git 管理
 - 主密码与明文仅在运行时内存中存在
-- 架构设计与执行流程见：[`docs/architecture.md`](docs/architecture.md)
-- 安全模型与防护细节见：[`docs/security.md`](docs/security.md)
+- 架构设计与执行流程见：[`docs/reference/architecture.md`](docs/reference/architecture.md)
+- 安全模型与防护细节见：[`docs/reference/security.md`](docs/reference/security.md)
 
 ## 自动发布（GitHub Actions）
 

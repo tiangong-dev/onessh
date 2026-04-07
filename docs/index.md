@@ -10,6 +10,9 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
+      text: Reference
+      link: /reference/
+    - theme: alt
       text: View on GitHub
       link: https://github.com/tiangong-dev/onessh
 
@@ -24,7 +27,12 @@ features:
 
 ## Documentation
 
-This site mirrors and expands on the [README](https://github.com/tiangong-dev/onessh/blob/main/README.md). 简体中文说明见仓库 [README.zh-CN](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md).
+| Section | What you will find |
+| --- | --- |
+| [Guide](/guide/getting-started) | Install, first host, commands overview, configuration |
+| [Reference](/reference/) | Architecture and security design (detailed) |
+
+The [README](https://github.com/tiangong-dev/onessh/blob/main/README.md) is the long-form command reference with examples. 简体中文见 [README.zh-CN](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md).
 
 ## Quick example
 

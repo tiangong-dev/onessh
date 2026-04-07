@@ -2,7 +2,7 @@
 
 This document describes the overall OneSSH design, internal module boundaries, and end-to-end execution flow.
 
-For threat model and security controls, see [`security.md`](security.md).
+For threat model and security controls, see [Security](/reference/security).
 
 ## 1. Design Goals
 
@@ -145,4 +145,4 @@ flowchart TD
 ## 10. Relationship with Security Document
 
 - This file focuses on **architecture and execution behavior**.
-- [`security.md`](security.md) focuses on **threat model, mitigations, and security limits**.
+- [Security](/reference/security) covers **threat model, mitigations, and security limits**.
