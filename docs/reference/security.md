@@ -1,7 +1,7 @@
 # OneSSH Security Mechanisms
 
 This document summarizes OneSSH security design and key mitigations.
-For complete architecture and runtime execution flow, see [`architecture.md`](architecture.md).
+For complete architecture and runtime execution flow, see [Architecture](/reference/architecture).
 
 ## 1. Data At Rest Encryption
 
