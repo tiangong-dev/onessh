@@ -10,7 +10,7 @@
 - 主要文件：
   - `meta.yaml`（KDF 参数与密码校验）
   - `users/*.yaml`（用户名/认证）
-  - `hosts/*.yaml`（主机/user_ref/环境/钩子）
+  - `hosts/*.yaml`（主机/user_ref/端口/proxy_jump/环境/钩子）
 
 ### KDF 参数校验
 
@@ -36,7 +36,7 @@
 
 ```mermaid
 flowchart TD
-  A["CLI 命令"] --> B["loadConfig()"]
+  A["CLI 命令"] --> B["加载配置（缓存或提示输入）"]
   B --> C{"缓存中是否有口令?"}
   C -- "有" --> D["尝试解密存储"]
   D -- "成功" --> E["使用配置"]

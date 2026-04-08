@@ -40,6 +40,16 @@
 
 敏感字段为 `ENC[...]` 密文，目录结构便于 Git diff。
 
+## 主机条目字段（YAML）
+
+每台主机还可包含：
+
+- **`proxy_jump`** — 传给 `ssh` / `scp` 的 `-J`（跳板）。
+- **`env`** — 合并进 SSH 进程的环境变量；键名还会通过 `SendEnv` 发往远端（需远端 `sshd` 允许）。
+- **`pre_connect` / `post_connect`** — 在远程交互会话前后执行的本地钩子命令（包在登录 shell 包装里）。与 SSH `-N`、`-T` 不兼容（OneSSH 会拒绝该组合）。
+
+通过 `onessh add` / `onessh update` 编辑；完整模型见 [命令](/zh/guide/commands) 与 [架构](/zh/reference/architecture)。
+
 ## 密码认证
 
 - 优先使用 `sshpass -d`（通过文件描述符，不经环境变量暴露）。
