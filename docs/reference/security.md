@@ -11,7 +11,7 @@ For complete architecture and runtime execution flow, see [Architecture](/refere
 - Main files:
   - `meta.yaml` (KDF params + password verifier)
   - `users/*.yaml` (username/auth)
-  - `hosts/*.yaml` (host/user_ref/env/hooks)
+  - `hosts/*.yaml` (host/user_ref/port/proxy_jump/env/hooks)
 
 ### KDF hardening
 
@@ -37,7 +37,7 @@ This blocks malicious metadata from forcing extreme resource usage.
 
 ```mermaid
 flowchart TD
-  A["CLI command"] --> B["loadConfig()"]
+  A["CLI command"] --> B["load config (cache or prompt)"]
   B --> C{"Cached passphrase exists?"}
   C -- "Yes" --> D["Try decrypt store"]
   D -- "OK" --> E["Use config"]

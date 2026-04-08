@@ -9,7 +9,7 @@
 - **单一主密码体验**：主机与用户配置均加密存储。
 - **适合 Git 的加密存储**（YAML 中的 `ENC[...]` 字段）。
 - **仅内存的运行时密钥缓存**（本地 agent）。
-- **统一的 SSH 操作**（在同一配置模型上的 `connect`、`exec`、`cp`、`test`）。
+- **统一的 SSH 操作**（交互式 `onessh <alias>`、`exec`、`cp`、`test`，同一配置模型）。
 - **默认简单的本地隔离**（agent 命名空间由父 shell PID 派生）。
 
 ## 2. 高层组件关系
@@ -48,7 +48,7 @@ hosts/<alias>.yaml
 
 - `meta.yaml`：KDF 参数与密码校验。
 - `users/*.yaml`：可复用用户 profile（`name`、`auth`）。
-- `hosts/*.yaml`：目标主机（`host`、`user_ref`、`port`、`env`、钩子、标签）。
+- `hosts/*.yaml`：目标主机（`host`、`user_ref`、`port`、`proxy_jump`、`env`、`pre_connect` / `post_connect` 钩子、标签）。
 
 敏感值为加密载荷（`ENC[...]`），文件结构仍便于 diff。
 
@@ -96,7 +96,7 @@ flowchart TD
    - `init`、`add`、`update`、`rm`、`user *`、`passwd`、`show`、`ls`
    - 主要在解密后的模型上操作，再写回加密存储。
 2. **远程操作类命令**
-   - `connect`（`onessh <alias>`）、`exec`、`cp`、`test`
+   - 根命令 `onessh <alias>`（交互式 SSH；无 `connect` 子命令），以及 `exec`、`cp`、`test`
    - 解析主机与用户 profile 后，调用 SSH 传输适配层。
 
 ### 7.1 远程操作流水线

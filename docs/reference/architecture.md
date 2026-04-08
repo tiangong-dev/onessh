@@ -9,7 +9,7 @@ For threat model and security controls, see [Security](/reference/security).
 - **Single master-password UX** for encrypted host/user configuration.
 - **Git-friendly encrypted storage** (`ENC[...]` fields in YAML).
 - **Memory-only runtime secret cache** via local agent.
-- **Unified SSH operations** (`connect`, `exec`, `cp`, `test`) over the same config model.
+- **Unified SSH operations** (interactive `onessh <alias>`, `exec`, `cp`, `test`) over the same config model.
 - **Simple local isolation model** by default (agent namespace derived from parent shell PID).
 
 ## 2. High-Level Component Map
@@ -48,7 +48,7 @@ hosts/<alias>.yaml
 
 - `meta.yaml`: KDF parameters + password verifier.
 - `users/*.yaml`: reusable user profiles (`name`, `auth`).
-- `hosts/*.yaml`: target hosts (`host`, `user_ref`, `port`, `env`, hooks, tags).
+- `hosts/*.yaml`: target hosts (`host`, `user_ref`, `port`, `proxy_jump`, `env`, `pre_connect` / `post_connect` hooks, tags).
 
 Sensitive values are stored as encrypted payloads (`ENC[...]`), while file structure remains diff-friendly.
 
@@ -97,7 +97,7 @@ Two broad command families:
    - `init`, `add`, `update`, `rm`, `user *`, `passwd`, `show`, `ls`
    - Mainly operate on decrypted config model and write encrypted store back.
 2. **Remote operation commands**
-   - `connect` (`onessh <alias>`), `exec`, `cp`, `test`
+   - Root invocation `onessh <alias>` (interactive SSH; no `connect` subcommand), plus `exec`, `cp`, `test`
    - Resolve host + user profile, then invoke SSH transport adapters.
 
 ### 7.1 Remote operation pipeline

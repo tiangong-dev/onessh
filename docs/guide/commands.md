@@ -13,7 +13,7 @@
 | `onessh show <alias>` | Show host details |
 | `onessh user` (`ls`, `add`, `update`, `rm`) | Manage user profiles |
 | `onessh logout [--all]` | Clear cached master password |
-| `onessh log [...]` | Audit log; `enable` / `disable` / `status` |
+| `onessh log` | Show recent audit entries (`--last`, `--action`, `--format`); subcommands `enable` / `disable` / `status` |
 | `onessh agent` (`start`, `stop`, `status`, `clear-all`) | Memory cache agent |
 
 ## SSH operations

@@ -40,6 +40,16 @@ The agent stores the master password in memory only. It can auto-start on first 
 
 Sensitive values are `ENC[...]` ciphertext. Structure stays readable for Git diffs.
 
+## Host entry fields (YAML)
+
+Each host can include:
+
+- **`proxy_jump`** — passed to `ssh` / `scp` as `-J` (jump host).
+- **`env`** — per-host environment variables merged into the SSH process; keys are also sent to the server via `SendEnv` when the remote `sshd` allows it.
+- **`pre_connect` / `post_connect`** — local hook commands run inside a remote login shell wrapper before/after the interactive session. They are incompatible with SSH `-N` and `-T` (OneSSH rejects that combination).
+
+Use `onessh add` / `onessh update` to edit these; see [Commands](/guide/commands) and [Architecture](/reference/architecture) for the full model.
+
 ## Password authentication
 
 - Prefer `sshpass -d` when available (file descriptor, not environment).

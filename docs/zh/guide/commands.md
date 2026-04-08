@@ -13,7 +13,7 @@
 | `onessh show <alias>` | 查看主机详情 |
 | `onessh user`（`ls`、`add`、`update`、`rm`） | 管理 user profile |
 | `onessh logout [--all]` | 清除主密码缓存 |
-| `onessh log [...]` | 审计日志；`enable` / `disable` / `status` |
+| `onessh log` | 查看最近审计记录（`--last`、`--action`、`--format`）；子命令 `enable` / `disable` / `status` |
 | `onessh agent`（`start`、`stop`、`status`、`clear-all`） | 内存缓存 agent |
 
 ## SSH 操作
