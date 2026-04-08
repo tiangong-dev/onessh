@@ -10,7 +10,7 @@ For threat model and security controls, see [Security](/reference/security).
 - **Git-friendly encrypted storage** (`ENC[...]` fields in YAML).
 - **Memory-only runtime secret cache** via local agent.
 - **Unified SSH operations** (interactive `onessh <alias>`, `exec`, `cp`, `test`) over the same config model.
-- **Simple local isolation model** by default (agent namespace derived from parent shell PID).
+- **Simple local namespacing model** by default (agent socket/capability derived from parent shell PID for convenience, not as a strong same-UID security boundary).
 
 ## 2. High-Level Component Map
 
@@ -131,9 +131,10 @@ flowchart TD
   - peer UID verification (agent-side),
   - optional capability token validation.
 - Askpass fallback:
-  - register short-lived/bounded-use token in agent,
+  - register a short-lived, single-use token in agent,
   - helper resolves token at runtime,
-  - cleanup removes token and temporary launcher script.
+  - cleanup removes token and temporary launcher script,
+  - intended as a compatibility fallback, not as strong as the `sshpass -d` path.
 
 ## 9. Lifecycle and Cleanup
 
