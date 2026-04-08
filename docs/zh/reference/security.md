@@ -30,7 +30,8 @@
 - 存储：按配置路径分 TTL 的内存映射。
 - 访问控制：Unix 套接字对端 UID 须与 agent 进程 UID 一致。
 - 可选加固：每次 IPC 可要求 capability token。
-- 默认隔离：未显式配置时，套接字路径与 capability 由父 shell PID 派生。
+- 默认命名空间区分：未显式配置时，套接字路径与 capability 由父 shell PID 派生，便于不同终端默认使用不同 agent。
+- 该默认行为主要用于降低误连到其他终端 agent 的概率，不应视为同 UID 本地对手下的强安全边界。
 
 ### 流程
 
@@ -53,6 +54,7 @@ OneSSH 避免将 SSH 密码放入环境变量。
 
 - 优先：`sshpass -d 3`，通过继承的管道 FD 传密。
 - 回退：`SSH_ASKPASS` 辅助程序 + onessh agent IPC token。
+- 该回退路径仅作为兼容机制；虽然 token 为短时且限次，但仍弱于 `sshpass -d`。
 
 ### 优先路径（`sshpass -d`）
 
@@ -80,8 +82,8 @@ flowchart TD
 Token 控制：
 
 - 使用 CSPRNG 生成随机 token；
-- 短 TTL；
-- 限制最大使用次数；
+- 短 TTL（默认 10 秒）；
+- 限制最大使用次数（默认单次使用）；
 - 命令结束后显式清理。
 
 ## 4. 重置安全（`init --force`）
@@ -109,5 +111,7 @@ Token 控制：
 仍在范围内 / 局限：
 
 - 同 UID 本地恶意软件仍具高权限；
+- 默认基于父 shell PID 派生的 socket/capability 主要用于命名空间区分，不应视为同 UID 场景下的强安全边界；
 - SSH 密码认证相对密钥认证暴露面更大；
+- `SSH_ASKPASS` 回退路径只是兼容机制，安全性弱于 `sshpass -d`；
 - Windows 上对端凭证检查需专门实现。

@@ -25,7 +25,7 @@ Environment fallbacks:
 - `ONESSH_AGENT_SOCKET` (fallback: `SHUSH_SOCKET`)
 - `ONESSH_AGENT_CAPABILITY` (fallback: `SHUSH_CAPABILITY`)
 
-The agent stores the master password in memory only. It can auto-start on first successful unlock; socket and capability default from your parent shell PID for isolation between terminals.
+The agent stores the master password in memory only. It can auto-start on first successful unlock; when not explicitly configured, socket and capability default from your parent shell PID for convenience and namespace separation between terminals, not as a strong same-UID security boundary.
 
 ## Store layout
 
@@ -53,6 +53,6 @@ Use `onessh add` / `onessh update` to edit these; see [Commands](/guide/commands
 ## Password authentication
 
 - Prefer `sshpass -d` when available (file descriptor, not environment).
-- Otherwise: `SSH_ASKPASS` with a short-lived onessh agent token.
+- Otherwise: `SSH_ASKPASS` with a short-lived single-use onessh agent token. This fallback is weaker than `sshpass -d` because the helper still needs a short-lived bearer token to resolve the password at runtime.
 
 For encryption details and runtime security, see [Security](/reference/security).

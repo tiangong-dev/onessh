@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"time"
 	"strings"
 	"testing"
 )
@@ -28,16 +29,24 @@ func TestRegisterAskPassTokenUsesDefaultPolicy(t *testing.T) {
 		t.Fatalf("unexpected first secret: %q", first)
 	}
 
-	second, err := resolveAskPassTokenSecret(socketPath, token, "")
-	if err != nil {
-		t.Fatalf("resolveAskPassTokenSecret second: %v", err)
-	}
-	if second != "ssh-secret" {
-		t.Fatalf("unexpected second secret: %q", second)
-	}
-
 	_, err = resolveAskPassTokenSecret(socketPath, token, "")
 	if err == nil || !strings.Contains(err.Error(), "not found or expired") {
 		t.Fatalf("expected token exhaustion error, got %v", err)
+	}
+}
+
+func TestRegisterAskPassTokenDefaultTTLExpiresQuickly(t *testing.T) {
+	socketPath := startTestPassphraseAgent(t)
+	token, cleanup, err := registerAskPassToken(socketPath, "ssh-secret", 0, 0, "")
+	if err != nil {
+		t.Fatalf("registerAskPassToken: %v", err)
+	}
+	defer cleanup()
+
+	time.Sleep(defaultAskPassTTL + 1500*time.Millisecond)
+
+	_, err = resolveAskPassTokenSecret(socketPath, token, "")
+	if err == nil || !strings.Contains(err.Error(), "not found or expired") {
+		t.Fatalf("expected token expiration error, got %v", err)
 	}
 }

@@ -25,7 +25,7 @@
 - `ONESSH_AGENT_SOCKET`（回退：`SHUSH_SOCKET`）
 - `ONESSH_AGENT_CAPABILITY`（回退：`SHUSH_CAPABILITY`）
 
-主密码仅保存在内存 agent 中；首次成功解锁后可自动拉起 agent；未显式配置时，套接字与 capability 默认由父 shell PID 派生，以隔离不同终端。
+主密码仅保存在内存 agent 中；首次成功解锁后可自动拉起 agent；未显式配置时，套接字与 capability 默认由父 shell PID 派生，用于便利性和默认命名空间区分，不应视为同 UID 下的强安全边界。
 
 ## 存储布局
 
@@ -53,6 +53,6 @@
 ## 密码认证
 
 - 优先使用 `sshpass -d`（通过文件描述符，不经环境变量暴露）。
-- 否则使用 `SSH_ASKPASS` + onessh agent 短时 token。
+- 否则使用 `SSH_ASKPASS` + onessh agent 短时、单次使用 token。该回退路径弱于 `sshpass -d`，因为辅助程序在运行时仍需凭短时 token 向 agent 取回密码。
 
 加密细节与运行时安全见 [安全](/zh/reference/security)。

@@ -159,7 +159,7 @@ func executeSSH(
 			binary = "sshpass"
 			args = append([]string{"-d", "3", "ssh"}, args...)
 		} else {
-			fmt.Fprintln(errOut, "sshpass not found, using SSH_ASKPASS via agent IPC fallback.")
+			fmt.Fprintln(errOut, "sshpass not found; using weaker SSH_ASKPASS fallback with a short-lived single-use agent token.")
 			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
 			if err != nil {
 				return err

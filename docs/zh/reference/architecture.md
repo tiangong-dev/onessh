@@ -10,7 +10,7 @@
 - **适合 Git 的加密存储**（YAML 中的 `ENC[...]` 字段）。
 - **仅内存的运行时密钥缓存**（本地 agent）。
 - **统一的 SSH 操作**（交互式 `onessh <alias>`、`exec`、`cp`、`test`，同一配置模型）。
-- **默认简单的本地隔离**（agent 命名空间由父 shell PID 派生）。
+- **默认简单的本地命名空间区分**（agent 套接字/capability 由父 shell PID 派生，偏便利性设计，不是同 UID 下的强安全边界）。
 
 ## 2. 高层组件关系
 
@@ -130,9 +130,10 @@ flowchart TD
   - agent 端校验对端 UID；
   - 可选 capability token 校验。
 - Askpass 回退：
-  - 在 agent 注册短时/限次 token；
+  - 在 agent 注册短时、单次使用 token；
   - 运行时由辅助程序解析 token；
-  - 结束后清理 token 与临时启动脚本。
+  - 结束后清理 token 与临时启动脚本；
+  - 这是兼容性回退路径，安全性弱于 `sshpass -d`。
 
 ## 9. 生命周期与清理
 

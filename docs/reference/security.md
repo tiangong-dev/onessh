@@ -31,7 +31,7 @@ This blocks malicious metadata from forcing extreme resource usage.
 - Cache storage: in-memory map with TTL per config path.
 - Access control: Unix socket peer UID must match agent process UID.
 - Optional hardening: capability token can be required on every IPC request.
-- Default isolation: when not explicitly configured, socket path and capability are auto-derived from parent shell PID.
+- Default behavior: when not explicitly configured, socket path and capability are auto-derived from parent shell PID for convenience and namespace separation, not as a strong same-UID security boundary.
 
 ### Flow
 
@@ -53,7 +53,7 @@ flowchart TD
 OneSSH avoids putting SSH password in env vars.
 
 - Preferred: `sshpass -d 3` with password through inherited FD pipe.
-- Fallback: `SSH_ASKPASS` helper + onessh agent IPC token.
+- Fallback: `SSH_ASKPASS` helper + onessh agent IPC token (weaker than `sshpass -d` because a local same-UID process may still race to observe the helper context).
 
 ### Preferred path (`sshpass -d`)
 
@@ -81,8 +81,8 @@ flowchart TD
 Token controls:
 
 - random token generated from CSPRNG
-- short TTL
-- bounded max uses
+- short TTL (10 seconds by default)
+- bounded max uses (single-use by default)
 - explicit cleanup after command exit
 
 ## 4. Reset Safety (`init --force`)
@@ -102,7 +102,6 @@ Mitigated:
 
 - disk leakage of cached master password (no file cache backend)
 - cross-UID socket access to memory agent
-- accidental same-UID misuse when capability token is enabled
 - env-var leakage of SSH password in normal paths
 - accidental plain dump leakage (default redaction)
 - KDF parameter abuse from tampered metadata
@@ -110,5 +109,7 @@ Mitigated:
 Still in scope / limitations:
 
 - same-UID local malware is still powerful
+- default parent-PID-derived socket/capability values are not intended to provide strong isolation from other same-UID processes
 - SSH password auth inherently has higher exposure risk than key auth
+- `SSH_ASKPASS` fallback is a weaker compatibility path than `sshpass -d`
 - Windows equivalent of peer-credential checks needs dedicated implementation

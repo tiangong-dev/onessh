@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	defaultAskPassTTL     = 30 * time.Second
-	defaultAskPassMaxUses = 2
+	defaultAskPassTTL     = 10 * time.Second
+	defaultAskPassMaxUses = 1
 )
 
 type passphraseAgentClient struct {
