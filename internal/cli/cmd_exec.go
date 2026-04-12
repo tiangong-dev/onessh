@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"onessh/internal/store"
@@ -98,66 +96,18 @@ func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthCon
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	if host.Port <= 0 {
-		host.Port = 22
+	args, err := buildSSHArgs(host, userName, auth, []string{"-T"})
+	if err != nil {
+		return err
 	}
-	args := []string{"-p", strconv.Itoa(host.Port), "-T"}
-	if host.ProxyJump != "" {
-		args = append(args, "-J", host.ProxyJump)
-	}
-
-	switch strings.ToLower(auth.Type) {
-	case "key":
-		if auth.KeyPath != "" {
-			keyPath, err := expandTilde(auth.KeyPath)
-			if err != nil {
-				return err
-			}
-			args = append(args, "-i", keyPath)
-		}
-	case "password":
-	default:
-		return fmt.Errorf("unsupported auth type: %s", auth.Type)
-	}
-
-	destination := host.Host
-	if userName != "" {
-		destination = fmt.Sprintf("%s@%s", userName, host.Host)
-	}
-	args = append(args, destination)
 	args = append(args, remoteCmd...)
 
 	binary := "ssh"
 	env := os.Environ()
-	var extraFiles []*os.File
-
-	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err == nil {
-			fd, cleanup, err := newPasswordFD(auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			extraFiles = append(extraFiles, fd)
-			binary = "sshpass"
-			args = append([]string{"-d", "3", "ssh"}, args...)
-		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			env = append(env, askPassEnv...)
-		}
+	binary, args, env, extraFiles, cleanup, err := withPasswordAuth(binary, args, auth, env, agentSocket, agentCapability, nil, "ssh")
+	if err != nil {
+		return err
 	}
-
-	execCmd := exec.Command(binary, args...)
-	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = stdout
-	execCmd.Stderr = stderr
-	execCmd.Env = env
-	if len(extraFiles) > 0 {
-		execCmd.ExtraFiles = extraFiles
-	}
-	return execCmd.Run()
+	defer cleanup()
+	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

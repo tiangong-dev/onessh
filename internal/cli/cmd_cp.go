@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"onessh/internal/store"
@@ -239,74 +237,17 @@ func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, r
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	if host.Port <= 0 {
-		host.Port = 22
-	}
-	args := []string{"-P", strconv.Itoa(host.Port)}
-	if recursive {
-		args = append(args, "-r")
-	}
-	if host.ProxyJump != "" {
-		args = append(args, "-J", host.ProxyJump)
-	}
-
-	switch strings.ToLower(auth.Type) {
-	case "key":
-		if auth.KeyPath != "" {
-			keyPath, err := expandTilde(auth.KeyPath)
-			if err != nil {
-				return err
-			}
-			args = append(args, "-i", keyPath)
-		}
-	case "password":
-	default:
-		return fmt.Errorf("unsupported auth type: %s", auth.Type)
-	}
-
-	destination := host.Host
-	if userName != "" {
-		destination = fmt.Sprintf("%s@%s", userName, host.Host)
-	}
-	remote := destination + ":" + remotePath
-	if isUpload {
-		args = append(args, localPaths...)
-		args = append(args, remote)
-	} else {
-		args = append(args, remote, localPaths[0])
+	args, err := buildSCPArgs(host, userName, auth, remotePath, localPaths, isUpload, recursive)
+	if err != nil {
+		return err
 	}
 
 	binary := "scp"
 	env := os.Environ()
-	var extraFiles []*os.File
-
-	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err == nil {
-			fd, cleanup, err := newPasswordFD(auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			extraFiles = append(extraFiles, fd)
-			binary = "sshpass"
-			args = append([]string{"-d", "3", "scp"}, args...)
-		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			env = append(env, askPassEnv...)
-		}
+	binary, args, env, extraFiles, cleanup, err := withPasswordAuth(binary, args, auth, env, agentSocket, agentCapability, nil, "scp")
+	if err != nil {
+		return err
 	}
-
-	execCmd := exec.Command(binary, args...)
-	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = stdout
-	execCmd.Stderr = stderr
-	execCmd.Env = env
-	if len(extraFiles) > 0 {
-		execCmd.ExtraFiles = extraFiles
-	}
-	return execCmd.Run()
+	defer cleanup()
+	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

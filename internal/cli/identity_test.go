@@ -78,3 +78,38 @@ func TestResolveHostIdentityRequiresPasswordWhenPasswordAuth(t *testing.T) {
 		t.Fatalf("expected error when password auth has empty password")
 	}
 }
+
+func TestSummarizeHostIdentityForList(t *testing.T) {
+	t.Parallel()
+
+	cfg := store.NewPlainConfig()
+	cfg.Users["ops"] = store.UserConfig{
+		Name: "ubuntu",
+		Auth: store.AuthConfig{Type: "password", Password: "secret"},
+	}
+
+	userName, authType, status := summarizeHostIdentityForList(cfg, store.HostConfig{Host: "1.2.3.4", UserRef: "ops"})
+	if userName != "ubuntu" || authType != "password" || status != "ok" {
+		t.Fatalf("unexpected summarize result: %q %q %q", userName, authType, status)
+	}
+}
+
+func TestHostAliasesUsingUser(t *testing.T) {
+	t.Parallel()
+
+	cfg := store.NewPlainConfig()
+	cfg.Hosts["b"] = store.HostConfig{UserRef: "ops"}
+	cfg.Hosts["a"] = store.HostConfig{UserRef: "ops"}
+	cfg.Hosts["x"] = store.HostConfig{UserRef: "dev"}
+
+	got := hostAliasesUsingUser(cfg, "ops")
+	want := []string{"a", "b"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected aliases length: %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected aliases: %v", got)
+		}
+	}
+}

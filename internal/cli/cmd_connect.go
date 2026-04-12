@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"onessh/internal/store"
@@ -94,38 +92,9 @@ func executeSSH(
 	agentSocket string,
 	agentCapability string,
 ) error {
-	args := make([]string, 0, 10+len(sshArgs))
-	extraFiles := []*os.File{}
-	cleanupExtraFiles := []func(){}
-
-	if host.Port <= 0 {
-		host.Port = 22
-	}
-
-	args = append(args, "-p", strconv.Itoa(host.Port))
-
-	if host.ProxyJump != "" {
-		args = append(args, "-J", host.ProxyJump)
-	}
-	args = appendSendEnvOptions(args, host.Env)
-
-	switch strings.ToLower(auth.Type) {
-	case "key":
-		if auth.KeyPath != "" {
-			keyPath, err := expandTilde(auth.KeyPath)
-			if err != nil {
-				return err
-			}
-			args = append(args, "-i", keyPath)
-		}
-	case "password":
-	default:
-		return fmt.Errorf("unsupported auth type: %s", auth.Type)
-	}
-
-	destination := host.Host
-	if userName != "" {
-		destination = fmt.Sprintf("%s@%s", userName, host.Host)
+	args, err := buildSSHArgs(host, userName, auth, nil)
+	if err != nil {
+		return err
 	}
 
 	hookCommand := buildRemoteHookCommand(host.PreConnect, host.PostConnect)
@@ -140,50 +109,19 @@ func executeSSH(
 	}
 
 	args = append(args, sshArgs...)
-	args = append(args, destination)
+	args = append(args, sshDestination(host, userName))
 	if hookCommand != "" {
 		args = append(args, hookCommand)
 	}
 
 	binary := "ssh"
 	env := mergeCommandEnv(os.Environ(), host.Env)
-	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err == nil {
-			passwordFD, cleanup, err := newPasswordFD(auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			extraFiles = append(extraFiles, passwordFD)
-			cleanupExtraFiles = append(cleanupExtraFiles, func() { _ = passwordFD.Close() })
-			binary = "sshpass"
-			args = append([]string{"-d", "3", "ssh"}, args...)
-		} else {
-			fmt.Fprintln(errOut, "sshpass not found; using weaker SSH_ASKPASS fallback with a short-lived single-use agent token.")
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			env = append(env, askPassEnv...)
-		}
+	binary, args, env, extraFiles, cleanup, err := withPasswordAuth(binary, args, auth, env, agentSocket, agentCapability, errOut, "ssh")
+	if err != nil {
+		return err
 	}
-
-	defer func() {
-		for _, cleanup := range cleanupExtraFiles {
-			cleanup()
-		}
-	}()
-
-	execCmd := exec.Command(binary, args...)
-	execCmd.Stdin = os.Stdin
-	execCmd.Stdout = os.Stdout
-	execCmd.Stderr = os.Stderr
-	execCmd.Env = env
-	if len(extraFiles) > 0 {
-		execCmd.ExtraFiles = extraFiles
-	}
-	return execCmd.Run()
+	defer cleanup()
+	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, os.Stdout, os.Stderr)
 }
 
 func buildRemoteHookCommand(preConnect, postConnect []string) string {
@@ -203,35 +141,6 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 
 	script := strings.Join(lines, "\n")
 	return "sh -lc " + shellSingleQuote(script)
-}
-
-func newPasswordFD(password string) (*os.File, func(), error) {
-	if strings.TrimSpace(password) == "" {
-		return nil, nil, errors.New("password auth requires non-empty password")
-	}
-
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		return nil, nil, fmt.Errorf("create password pipe: %w", err)
-	}
-
-	secret := append([]byte(password), '\n')
-	defer wipe(secret)
-
-	if _, err := writer.Write(secret); err != nil {
-		_ = reader.Close()
-		_ = writer.Close()
-		return nil, nil, fmt.Errorf("write password to pipe: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		_ = reader.Close()
-		return nil, nil, fmt.Errorf("close password pipe writer: %w", err)
-	}
-
-	cleanup := func() {
-		_ = reader.Close()
-	}
-	return reader, cleanup, nil
 }
 
 func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
@@ -296,20 +205,4 @@ func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string,
 		_ = os.Remove(scriptPath)
 	}
 	return env, cleanup, nil
-}
-
-func shellSingleQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
-}
-
-func containsShortFlag(args []string, flag rune) bool {
-	for _, arg := range args {
-		if len(arg) < 2 || arg[0] != '-' || strings.HasPrefix(arg, "--") {
-			continue
-		}
-		if strings.ContainsRune(arg[1:], flag) {
-			return true
-		}
-	}
-	return false
 }

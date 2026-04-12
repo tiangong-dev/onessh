@@ -50,7 +50,7 @@ func TestCLIInitAddListShowDryRun(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent-a.sock")
 	capability := "e2e-capability-a"
@@ -59,7 +59,7 @@ func TestCLIInitAddListShowDryRun(t *testing.T) {
 	initOutPath := filepath.Join(baseDir, "init.out")
 	addOutPath := filepath.Join(baseDir, "add.out")
 
-	_, err := runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "start")
+	_, err := startAgentWithRetry(baseDir, socketPath, capability)
 	if err != nil {
 		t.Fatalf("start agent: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestCLISessionIsolationAndLogout(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketA := filepath.Join(baseDir, "agent-a.sock")
 	capA := "e2e-capability-a"
@@ -163,7 +163,7 @@ func TestCLISessionIsolationAndLogout(t *testing.T) {
 
 	socketB := filepath.Join(baseDir, "agent-b.sock")
 	capB := "e2e-capability-b"
-	_, err := runOnessh(baseDir, "--agent-socket", socketB, "--agent-capability", capB, "agent", "start")
+	_, err := startAgentWithRetry(baseDir, socketB, capB)
 	if err != nil {
 		t.Fatalf("start session B agent: %v", err)
 	}
@@ -244,11 +244,11 @@ func TestCLISessionIsolationAndLogout(t *testing.T) {
 func bootstrapStoreWithHost(t *testing.T, dataDir, socketPath, capability, password string) {
 	t.Helper()
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	initOutPath := filepath.Join(baseDir, "init.out")
 	addOutPath := filepath.Join(baseDir, "add.out")
 
-	_, err := runOnessh(baseDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "start")
+	_, err := startAgentWithRetry(baseDir, socketPath, capability)
 	if err != nil {
 		t.Fatalf("start bootstrap agent: %v", err)
 	}
@@ -289,11 +289,40 @@ func runOnessh(workDir string, args ...string) (string, error) {
 	return string(out), err
 }
 
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "onessh-e2e-")
+	if err != nil {
+		t.Fatalf("create short temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+	return dir
+}
+
+func startAgentWithRetry(workDir, socketPath, capability string) (string, error) {
+	var lastOut string
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastOut, lastErr = runOnessh(workDir, "--agent-socket", socketPath, "--agent-capability", capability, "agent", "start")
+		if lastErr == nil {
+			return lastOut, nil
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	if lastOut == "" {
+		return "", lastErr
+	}
+	return lastOut, fmt.Errorf("%w\n%s", lastErr, lastOut)
+}
+
 func runWithTTY(workDir, command, input string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "script", "-qec", command, "/dev/null")
+	// Use the BSD-compatible invocation form, which also works on GNU script.
+	cmd := exec.CommandContext(ctx, "script", "-q", "/dev/null", "sh", "-lc", command)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
@@ -338,7 +367,7 @@ func TestCLIUpdate(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent.sock")
 	capability := "e2e-capability-update"
@@ -383,7 +412,7 @@ func TestCLIRm(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent.sock")
 	capability := "e2e-capability-rm"
@@ -432,7 +461,7 @@ func TestCLIPasswd(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent.sock")
 	capability := "e2e-capability-passwd"
@@ -516,7 +545,7 @@ func TestCLIUserAddListRm(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent.sock")
 	capability := "e2e-capability-user"
@@ -593,7 +622,7 @@ func TestCLILogEnableDisableStatus(t *testing.T) {
 	}
 	requireScript(t)
 
-	baseDir := t.TempDir()
+	baseDir := shortTempDir(t)
 	dataDir := filepath.Join(baseDir, "data")
 	socketPath := filepath.Join(baseDir, "agent.sock")
 	capability := "e2e-capability-log"

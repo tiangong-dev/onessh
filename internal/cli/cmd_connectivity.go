@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"onessh/internal/store"
@@ -88,66 +86,24 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 }
 
 func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
-	if host.Port <= 0 {
-		host.Port = 22
-	}
 	args := []string{
 		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
-		"-p", strconv.Itoa(host.Port),
 	}
-	if host.ProxyJump != "" {
-		args = append(args, "-J", host.ProxyJump)
-	}
-
-	switch strings.ToLower(auth.Type) {
-	case "key":
+	if auth.Type == "key" {
 		args = append(args, "-o", "BatchMode=yes")
-		if auth.KeyPath != "" {
-			keyPath, err := expandTilde(auth.KeyPath)
-			if err != nil {
-				return err
-			}
-			args = append(args, "-i", keyPath)
-		}
-	case "password":
-	default:
-		return fmt.Errorf("unsupported auth type: %s", auth.Type)
 	}
-
-	destination := host.Host
-	if userName != "" {
-		destination = fmt.Sprintf("%s@%s", userName, host.Host)
+	args, err := buildSSHArgs(host, userName, auth, args)
+	if err != nil {
+		return err
 	}
-	args = append(args, destination, "exit 0")
+	args = append(args, "exit 0")
 
 	binary := "ssh"
 	env := os.Environ()
-	var extraFiles []*os.File
-
-	if strings.ToLower(auth.Type) == "password" && auth.Password != "" {
-		if _, err := exec.LookPath("sshpass"); err == nil {
-			fd, cleanup, err := newPasswordFD(auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			extraFiles = append(extraFiles, fd)
-			binary = "sshpass"
-			args = append([]string{"-d", "3", "ssh"}, args...)
-		} else {
-			askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			env = append(env, askPassEnv...)
-		}
+	binary, args, env, extraFiles, cleanup, err := withPasswordAuth(binary, args, auth, env, agentSocket, agentCapability, nil, "ssh")
+	if err != nil {
+		return err
 	}
-
-	execCmd := exec.Command(binary, args...)
-	execCmd.Env = env
-	if len(extraFiles) > 0 {
-		execCmd.ExtraFiles = extraFiles
-	}
-	return execCmd.Run()
+	defer cleanup()
+	return runExternalCommand(binary, args, env, extraFiles, nil, nil, nil)
 }
