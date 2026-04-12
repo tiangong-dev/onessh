@@ -93,14 +93,14 @@ func printBatchResults(out, errOut io.Writer, aliases []string, results []batchR
 
 func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string) bool {
 	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
-		return batchResult{err: runSSHTest(host, userName, auth, timeout, agentSocket, agentCapability)}
+		return batchResult{err: runSSHTest(cfg, host, userName, auth, timeout, agentSocket, agentCapability)}
 	})
 }
 
 func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string) bool {
 	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
-		err := executeRemoteCmd(host, userName, auth, remoteCmd, agentSocket, agentCapability, &outBuf, &errBuf)
+		err := executeRemoteCmd(cfg, host, userName, auth, remoteCmd, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
 	})
 }
@@ -108,7 +108,7 @@ func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, r
 func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string) bool {
 	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
-		err := executeSCP(host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, agentCapability, &outBuf, &errBuf)
+		err := executeSCP(cfg, host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{err: err, stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
 	})
 }

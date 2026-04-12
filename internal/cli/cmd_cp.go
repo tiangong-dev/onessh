@@ -123,7 +123,7 @@ Use alias:path to specify a remote path:
 			if err != nil {
 				return err
 			}
-			cpErr := executeSCP(target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, opts.agentCapability, nil, nil)
+			cpErr := executeSCP(cfg, target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, opts.agentCapability, nil, nil)
 			if cpErr != nil {
 				opts.logEvent("cp", alias, target.Host, userName, "fail", cpErr)
 			} else {
@@ -204,7 +204,7 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 1: download from source to temp dir
 	fmt.Fprintf(os.Stderr, "Downloading from %s (%s) ...\n", srcAlias, srcHost.Host)
-	if err := executeSCP(srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, agentCapability, nil, nil); err != nil {
+	if err := executeSCP(cfg, srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, agentCapability, nil, nil); err != nil {
 		return fmt.Errorf("download from %s failed: %w", srcAlias, err)
 	}
 
@@ -223,21 +223,21 @@ func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, rec
 
 	// Step 2: upload from temp to destination
 	fmt.Fprintf(os.Stderr, "Uploading to %s (%s) ...\n", dstAlias, dstHost.Host)
-	if err := executeSCP(dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, agentCapability, nil, nil); err != nil {
+	if err := executeSCP(cfg, dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, agentCapability, nil, nil); err != nil {
 		return fmt.Errorf("upload to %s failed: %w", dstAlias, err)
 	}
 
 	return nil
 }
 
-func executeSCP(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	args, err := buildSCPArgs(host, userName, auth, remotePath, localPaths, isUpload, recursive)
+	args, err := buildSCPArgs(cfg, host, userName, auth, remotePath, localPaths, isUpload, recursive)
 	if err != nil {
 		return err
 	}

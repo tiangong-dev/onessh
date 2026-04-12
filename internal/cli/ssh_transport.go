@@ -19,16 +19,66 @@ func sshDestination(host store.HostConfig, userName string) string {
 	return destination
 }
 
-func applySSHCommonArgs(args []string, host store.HostConfig, portFlag string) []string {
+// buildProxyJumpArgs resolves the ProxyJump value into SSH arguments.
+// If proxyJump matches an alias in cfg.Hosts, the alias is expanded automatically:
+//   - key auth: resolves to -J user@host:port
+//   - password auth: resolves to -o ProxyCommand using the onessh binary itself
+//
+// If proxyJump does not match any alias, it is treated as a raw SSH jump spec (user@host:port).
+func buildProxyJumpArgs(cfg store.PlainConfig, proxyJump string) ([]string, error) {
+	if proxyJump == "" {
+		return nil, nil
+	}
+
+	jumpHostCfg, isAlias := cfg.Hosts[proxyJump]
+	if !isAlias {
+		// Raw spec (e.g. "user@jumphost:22") — pass through unchanged.
+		return []string{"-J", proxyJump}, nil
+	}
+
+	jumpUser, ok := cfg.Users[jumpHostCfg.UserRef]
+	if !ok {
+		return nil, fmt.Errorf("jump host alias %q references unknown user profile %q", proxyJump, jumpHostCfg.UserRef)
+	}
+
+	port := jumpHostCfg.Port
+	if port <= 0 {
+		port = 22
+	}
+
+	switch strings.ToLower(jumpUser.Auth.Type) {
+	case "key":
+		dest := fmt.Sprintf("%s@%s:%d", jumpUser.Name, jumpHostCfg.Host, port)
+		return []string{"-J", dest}, nil
+	case "password":
+		// Run onessh itself as the ProxyCommand so it can handle password auth
+		// using the existing passcache agent. The subprocess inherits the current
+		// environment (agent socket, data directory, etc.).
+		exePath, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("resolve onessh path for proxy: %w", err)
+		}
+		proxyCmd := fmt.Sprintf("%s -q %s -- -W %%h:%%p", exePath, proxyJump)
+		return []string{"-o", "ProxyCommand=" + proxyCmd}, nil
+	default:
+		return nil, fmt.Errorf("jump host %q has unsupported auth type %q", proxyJump, jumpUser.Auth.Type)
+	}
+}
+
+func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostConfig, portFlag string) ([]string, error) {
 	port := host.Port
 	if port <= 0 {
 		port = 22
 	}
 	args = append(args, portFlag, strconv.Itoa(port))
 	if host.ProxyJump != "" {
-		args = append(args, "-J", host.ProxyJump)
+		proxyArgs, err := buildProxyJumpArgs(cfg, host.ProxyJump)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, proxyArgs...)
 	}
-	return args
+	return args, nil
 }
 
 func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
@@ -49,24 +99,42 @@ func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
 	}
 }
 
-func buildSSHArgs(host store.HostConfig, userName string, auth store.AuthConfig, extra []string) ([]string, error) {
-	args := applySSHCommonArgs(nil, host, "-p")
+// buildSSHFlags builds the SSH option flags (port, proxy, identity, extras) without the destination.
+// Use this when you need to insert additional flags or the remote command after building.
+func buildSSHFlags(cfg store.PlainConfig, host store.HostConfig, auth store.AuthConfig, extra []string) ([]string, error) {
+	args, err := applySSHCommonArgs(nil, cfg, host, "-p")
+	if err != nil {
+		return nil, err
+	}
 	args = appendSendEnvOptions(args, host.Env)
-	args, err := applyKeyAuthArg(args, auth)
+	args, err = applyKeyAuthArg(args, auth)
 	if err != nil {
 		return nil, err
 	}
 	args = append(args, extra...)
+	return args, nil
+}
+
+// buildSSHArgs builds the full SSH argument list including the destination.
+// Any extra flags are inserted before the destination.
+func buildSSHArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, extra []string) ([]string, error) {
+	args, err := buildSSHFlags(cfg, host, auth, extra)
+	if err != nil {
+		return nil, err
+	}
 	args = append(args, sshDestination(host, userName))
 	return args, nil
 }
 
-func buildSCPArgs(host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool) ([]string, error) {
-	args := applySSHCommonArgs(nil, host, "-P")
+func buildSCPArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool) ([]string, error) {
+	args, err := applySSHCommonArgs(nil, cfg, host, "-P")
+	if err != nil {
+		return nil, err
+	}
 	if recursive {
 		args = append(args, "-r")
 	}
-	args, err := applyKeyAuthArg(args, auth)
+	args, err = applyKeyAuthArg(args, auth)
 	if err != nil {
 		return nil, err
 	}

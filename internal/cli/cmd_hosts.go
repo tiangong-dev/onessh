@@ -306,7 +306,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&aliasFlag, "alias", "", "Update host alias")
 	cmd.Flags().StringVar(&hostFlag, "host", "", "Update host address or domain")
 	cmd.Flags().IntVar(&portFlag, "port", 0, "Update SSH port")
-	cmd.Flags().StringVar(&proxyJump, "proxy-jump", "", "Update ProxyJump (empty value clears it)")
+	cmd.Flags().StringVar(&proxyJump, "proxy-jump", "", "Update ProxyJump: onessh alias or raw user@host:port (empty value clears it)")
 	cmd.Flags().StringVar(&userRefFlag, "user-ref", "", "Bind host to an existing user profile alias")
 	cmd.Flags().StringVar(&userFlag, "user", "", "Update linked user profile name")
 	cmd.Flags().StringVar(&authTypeFlag, "auth-type", "", "Update linked user auth type (key|password)")

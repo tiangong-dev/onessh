@@ -37,7 +37,7 @@ func parseConnectInvocation(cmd *cobra.Command, args []string) (string, []string
 	return alias, sshArgs, nil
 }
 
-func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []string) error {
+func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []string, proxyJumpOverride string, proxyJumpChanged bool) error {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
 		return errors.New("host alias cannot be empty")
@@ -58,6 +58,9 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	if !exists {
 		return fmt.Errorf("host %q not found", alias)
 	}
+	if proxyJumpChanged {
+		target.ProxyJump = strings.TrimSpace(proxyJumpOverride)
+	}
 	userName, auth, err := resolveHostIdentity(cfg, target)
 	if err != nil {
 		return err
@@ -74,7 +77,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	if !opts.quiet {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
 	}
-	connErr := executeSSH(target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket, opts.agentCapability)
+	connErr := executeSSH(cfg, target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket, opts.agentCapability)
 	if connErr != nil {
 		opts.logEvent("connect", alias, target.Host, userName, "fail", connErr)
 	} else {
@@ -84,6 +87,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 }
 
 func executeSSH(
+	cfg store.PlainConfig,
 	host store.HostConfig,
 	userName string,
 	auth store.AuthConfig,
@@ -92,12 +96,9 @@ func executeSSH(
 	agentSocket string,
 	agentCapability string,
 ) error {
-	args, err := buildSSHArgs(host, userName, auth, nil)
-	if err != nil {
-		return err
-	}
-
 	hookCommand := buildRemoteHookCommand(host.PreConnect, host.PostConnect)
+
+	var extraFlags []string
 	if hookCommand != "" {
 		if containsShortFlag(sshArgs, 'N') {
 			return errors.New("pre/post-connect commands are incompatible with -N")
@@ -105,11 +106,14 @@ func executeSSH(
 		if containsShortFlag(sshArgs, 'T') {
 			return errors.New("pre/post-connect commands are incompatible with -T")
 		}
-		args = append(args, "-tt")
+		extraFlags = append(extraFlags, "-tt")
 	}
+	extraFlags = append(extraFlags, sshArgs...)
 
-	args = append(args, sshArgs...)
-	args = append(args, sshDestination(host, userName))
+	args, err := buildSSHArgs(cfg, host, userName, auth, extraFlags)
+	if err != nil {
+		return err
+	}
 	if hookCommand != "" {
 		args = append(args, hookCommand)
 	}

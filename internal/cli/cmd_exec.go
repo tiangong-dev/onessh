@@ -71,7 +71,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			execErr := executeRemoteCmd(target, userName, auth, args[1:], opts.agentSocket, opts.agentCapability, nil, nil)
+			execErr := executeRemoteCmd(cfg, target, userName, auth, args[1:], opts.agentSocket, opts.agentCapability, nil, nil)
 			if execErr != nil {
 				opts.logEvent("exec", alias, target.Host, userName, "fail", execErr)
 			} else {
@@ -89,14 +89,14 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func executeRemoteCmd(host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	args, err := buildSSHArgs(host, userName, auth, []string{"-T"})
+	args, err := buildSSHArgs(cfg, host, userName, auth, []string{"-T"})
 	if err != nil {
 		return err
 	}

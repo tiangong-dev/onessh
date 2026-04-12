@@ -66,7 +66,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if testErr := runSSHTest(target, userName, auth, timeout, opts.agentSocket, opts.agentCapability); testErr != nil {
+			if testErr := runSSHTest(cfg, target, userName, auth, timeout, opts.agentSocket, opts.agentCapability); testErr != nil {
 				opts.logEvent("test", alias, target.Host, userName, "fail", testErr)
 				return fmt.Errorf("connectivity check failed: %w", testErr)
 			}
@@ -85,14 +85,14 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func runSSHTest(host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
+func runSSHTest(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
 	args := []string{
 		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
 	}
 	if auth.Type == "key" {
 		args = append(args, "-o", "BatchMode=yes")
 	}
-	args, err := buildSSHArgs(host, userName, auth, args)
+	args, err := buildSSHArgs(cfg, host, userName, auth, args)
 	if err != nil {
 		return err
 	}

@@ -28,6 +28,8 @@ type rootOptions struct {
 func NewRootCmd(version, commit, date string) *cobra.Command {
 	opts := &rootOptions{}
 
+	var proxyJump string
+
 	rootCmd := &cobra.Command{
 		Use:           "onessh [host] [-- <ssh-args...>]",
 		Short:         "Manage and connect SSH hosts from encrypted config",
@@ -39,9 +41,10 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runConnect(cmd, opts, alias, sshArgs)
+			return runConnect(cmd, opts, alias, sshArgs, proxyJump, cmd.Flags().Changed("proxy-jump"))
 		},
 	}
+	rootCmd.Flags().StringVarP(&proxyJump, "proxy-jump", "J", "", "Temporary jump host: onessh alias or user@host:port")
 
 	rootCmd.PersistentFlags().StringVar(&opts.dataPath, "data", "", "Path to data directory")
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")

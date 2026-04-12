@@ -84,7 +84,7 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 		return store.HostConfig{}, err
 	}
 
-	proxyJump, err := promptOptional(inputReader, "Proxy jump", defaultProxyJump)
+	proxyJump, err := promptOptional(inputReader, "Proxy jump (alias or user@host:port, leave empty to skip)", defaultProxyJump)
 	if err != nil {
 		return store.HostConfig{}, err
 	}
