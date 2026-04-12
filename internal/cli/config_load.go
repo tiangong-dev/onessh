@@ -8,19 +8,6 @@ import (
 	"onessh/internal/store"
 )
 
-func validateOutputFormat(value string, allowed ...string) (string, error) {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	if len(allowed) == 0 {
-		return normalized, nil
-	}
-	for _, candidate := range allowed {
-		if normalized == strings.ToLower(strings.TrimSpace(candidate)) {
-			return normalized, nil
-		}
-	}
-	return "", fmt.Errorf("unsupported output format %q (allowed: %s)", value, strings.Join(allowed, "|"))
-}
-
 func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
 	cache, err := opts.passphraseStore(repo.Path)
 	if err != nil {
