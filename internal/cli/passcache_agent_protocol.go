@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -98,22 +99,65 @@ func resolveAgentSocketPath(custom string) (string, error) {
 	if fromEnv := strings.TrimSpace(os.Getenv("ONESSH_AGENT_SOCKET")); fromEnv != "" {
 		return expandTilde(fromEnv)
 	}
-	if fromEnv := strings.TrimSpace(os.Getenv("SHUSH_SOCKET")); fromEnv != "" {
-		return expandTilde(fromEnv)
-	}
 	return defaultAgentSocketPath()
 }
 
 func startPassphraseAgentProcess(socketPath, capability string) error {
+	capability = strings.TrimSpace(resolveAgentCapability(capability))
+	if err := pingPassphraseAgent(socketPath, capability); err == nil {
+		return nil
+	} else if isShushCapabilityAuthError(err) {
+		return err
+	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
-	return shush.StartProcessWithCapability(
-		socketPath,
-		[]string{exePath, "agent", "serve", "--socket"},
-		resolveAgentCapability(capability),
-	)
+
+	cmd := exec.Command(exePath, "agent", "serve", "--socket", socketPath)
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if capability != "" {
+		cmd.Env = withAgentCapabilityEnv(os.Environ(), capability)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start agent process: %w", err)
+	}
+	_ = cmd.Process.Release()
+
+	var lastErr error
+	for i := 0; i < 40; i++ {
+		time.Sleep(25 * time.Millisecond)
+		lastErr = pingPassphraseAgent(socketPath, capability)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("wait for agent startup: %w", lastErr)
+}
+
+func isShushCapabilityAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "forbidden: capability") || strings.Contains(msg, "forbidden: invalid capability")
+}
+
+func withAgentCapabilityEnv(env []string, capability string) []string {
+	onesshPrefix := onesshAgentCapabilityEnv + "="
+	shushPrefix := shush.EnvCapability + "="
+	out := make([]string, 0, len(env)+2)
+	for _, kv := range env {
+		if strings.HasPrefix(kv, onesshPrefix) || strings.HasPrefix(kv, shushPrefix) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	out = append(out, onesshPrefix+capability, shushPrefix+capability)
+	return out
 }
 
 func pingPassphraseAgent(socketPath, capability string) error {

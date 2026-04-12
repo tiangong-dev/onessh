@@ -37,8 +37,8 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode host %s: %w", alias, err)
 		}
-		if doc.Version != docVersion {
-			return fmt.Errorf("unsupported host doc version for %s: %d", alias, doc.Version)
+		if err := validateReadableHostDocVersion(alias, doc.Version); err != nil {
+			return err
 		}
 
 		hostValue, err := decryptStringField(doc.Host, key)
@@ -135,7 +135,7 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 		}
 
 		doc := hostDoc{
-			Version:     docVersion,
+			Version:     hostDocWriteVersion,
 			Description: strings.TrimSpace(hostCfg.Description),
 			UserRef:     strings.TrimSpace(hostCfg.UserRef),
 			Port:        hostCfg.Port,

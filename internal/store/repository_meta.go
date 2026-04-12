@@ -41,8 +41,8 @@ func (r Repository) loadMetaAndKey(passphrase []byte, createIfMissing bool) (met
 	if err := yaml.Unmarshal(raw, &meta); err != nil {
 		return metadataDoc{}, nil, fmt.Errorf("decode metadata: %w", err)
 	}
-	if meta.Version != storeVersion {
-		return metadataDoc{}, nil, fmt.Errorf("unsupported store version: %d", meta.Version)
+	if err := validateReadableStoreVersion(meta.Version); err != nil {
+		return metadataDoc{}, nil, err
 	}
 	if meta.KDF.Name != "argon2id" {
 		return metadataDoc{}, nil, fmt.Errorf("unsupported kdf: %s", meta.KDF.Name)
@@ -63,7 +63,27 @@ func (r Repository) loadMetaAndKey(passphrase []byte, createIfMissing bool) (met
 		return metadataDoc{}, nil, ErrInvalidPassword
 	}
 
+	if err := r.ensureStoreMetaFileCurrent(&meta, key); err != nil {
+		zeroBytes(key)
+		return metadataDoc{}, nil, err
+	}
+
 	return meta, key, nil
+}
+
+// ensureStoreMetaFileCurrent rewrites meta.yaml when the on-disk store version is older than
+// storeWriteVersion but still supported (storeMinVersion..storeWriteVersion).
+func (r Repository) ensureStoreMetaFileCurrent(meta *metadataDoc, key []byte) error {
+	if meta.Version >= storeWriteVersion {
+		return nil
+	}
+	prev := meta.Version
+	meta.Version = storeWriteVersion
+	if err := writeYAMLAtomic(r.metaPath(), *meta); err != nil {
+		meta.Version = prev
+		return fmt.Errorf("upgrade store metadata: %w", err)
+	}
+	return nil
 }
 
 func (r Repository) createMeta(passphrase []byte) (metadataDoc, []byte, error) {
@@ -85,7 +105,7 @@ func (r Repository) createMeta(passphrase []byte) (metadataDoc, []byte, error) {
 	}
 
 	meta := metadataDoc{
-		Version: storeVersion,
+		Version: storeWriteVersion,
 		KDF:     params,
 		Check:   check,
 	}
