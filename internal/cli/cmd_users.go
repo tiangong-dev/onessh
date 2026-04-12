@@ -400,12 +400,31 @@ func newPasswdCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newLogoutCmd(opts *rootOptions) *cobra.Command {
+	var clearAllConfigs bool
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Clear cached master password for current config",
-		Long:  "Clear the cached master password for the current data directory.\n\nTo clear all cached passwords and tokens in the agent, use 'onessh agent clear-all'.",
-		Args:  cobra.NoArgs,
+		Long: "Clear the cached master password for the current data directory.\n\n" +
+			"Use --all to clear cached master passwords for every data directory in this agent (other agent keys are left intact).\n\n" +
+			"To clear all cached passwords and tokens in the agent, use 'onessh agent clear-all'.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if clearAllConfigs {
+				socketPath, err := resolveAgentSocketPath(opts.agentSocket)
+				if err != nil {
+					return err
+				}
+				if err := clearPassphraseCacheByPrefix(
+					socketPath,
+					passphraseCacheKeyPrefixV1,
+					resolveAgentCapability(opts.agentCapability),
+				); err != nil {
+					return fmt.Errorf("clear cached passphrases: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "✔ all cached master passwords cleared")
+				return nil
+			}
+
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -427,6 +446,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&clearAllConfigs, "all", false, "Clear cached master passwords for all data directories in this agent")
 	return cmd
 }
 

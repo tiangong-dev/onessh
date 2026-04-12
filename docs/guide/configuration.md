@@ -20,10 +20,10 @@ Overrides:
 - `--agent-socket /path/to/agent.sock` — agent Unix socket
 - `--agent-capability <token>` — require capability token for agent IPC
 
-Environment fallbacks:
+Environment variables for defaults (when flags are unset):
 
-- `ONESSH_AGENT_SOCKET` (fallback: `SHUSH_SOCKET`)
-- `ONESSH_AGENT_CAPABILITY` (fallback: `SHUSH_CAPABILITY`)
+- `ONESSH_AGENT_SOCKET`
+- `ONESSH_AGENT_CAPABILITY`
 
 The agent stores the master password in memory only. It can auto-start on first successful unlock; when not explicitly configured, socket and capability default from your parent shell PID for convenience and namespace separation between terminals, not as a strong same-UID security boundary.
 

@@ -14,8 +14,6 @@ var (
 )
 
 const (
-	storeVersion      = 3
-	docVersion        = 1
 	metaFileName      = "meta.yaml"
 	usersDirName      = "users"
 	hostsDirName      = "hosts"

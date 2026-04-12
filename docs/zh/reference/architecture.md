@@ -60,11 +60,11 @@ hosts/<alias>.yaml
 2. 解析数据路径。
 3. 解析 agent 套接字：
    - 显式 `--agent-socket`
-   - `ONESSH_AGENT_SOCKET` / `SHUSH_SOCKET`
+   - `ONESSH_AGENT_SOCKET`
    - 默认由父 shell PID 派生的套接字。
 4. 解析 agent capability：
    - 显式 `--agent-capability`
-   - `ONESSH_AGENT_CAPABILITY` / `SHUSH_CAPABILITY`
+   - `ONESSH_AGENT_CAPABILITY`
    - 默认由 `uid + 父 shell PID` 派生。
 5. 构建缓存键命名空间：`onessh:passphrase:v1:<canonical-data-path>`。
 

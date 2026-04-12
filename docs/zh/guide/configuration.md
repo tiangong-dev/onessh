@@ -20,10 +20,10 @@
 - `--agent-socket /path/to/agent.sock` — agent Unix 套接字
 - `--agent-capability <token>` — 为 agent IPC 启用 capability 校验
 
-环境变量回退：
+用于默认值的的环境变量（未设置对应命令行参数时）：
 
-- `ONESSH_AGENT_SOCKET`（回退：`SHUSH_SOCKET`）
-- `ONESSH_AGENT_CAPABILITY`（回退：`SHUSH_CAPABILITY`）
+- `ONESSH_AGENT_SOCKET`
+- `ONESSH_AGENT_CAPABILITY`
 
 主密码仅保存在内存 agent 中；首次成功解锁后可自动拉起 agent；未显式配置时，套接字与 capability 默认由父 shell PID 派生，用于便利性和默认命名空间区分，不应视为同 UID 下的强安全边界。
 

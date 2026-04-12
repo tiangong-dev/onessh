@@ -21,7 +21,6 @@ type rootOptions struct {
 	agentCapability string
 	quiet           bool
 	log             bool
-	noLog           bool
 	auditLog        *audit.Logger
 }
 
@@ -53,14 +52,8 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&opts.agentCapability, "agent-capability", defaultAgentCapabilityFlagValue(), "Capability token required by memory cache agent")
 	rootCmd.PersistentFlags().BoolVarP(&opts.quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&opts.log, "log", false, "Enable audit logging for this command run")
-	rootCmd.PersistentFlags().BoolVar(&opts.noLog, "no-log", false, "Disable audit logging")
-	_ = rootCmd.PersistentFlags().MarkHidden("no-log")
-	_ = rootCmd.PersistentFlags().MarkDeprecated("no-log", "default is now disabled; use --log to enable for one run")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if opts.noLog {
-			return nil
-		}
 		repo, err := opts.repository()
 		if err != nil {
 			return err

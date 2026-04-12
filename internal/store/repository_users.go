@@ -37,8 +37,8 @@ func (r Repository) loadUsers(cfg *PlainConfig, key []byte) error {
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode user %s: %w", alias, err)
 		}
-		if doc.Version != docVersion {
-			return fmt.Errorf("unsupported user doc version for %s: %d", alias, doc.Version)
+		if err := validateReadableUserDocVersion(alias, doc.Version); err != nil {
+			return err
 		}
 
 		name, err := decryptStringField(doc.Name, key)
@@ -105,7 +105,7 @@ func (r Repository) syncUsers(cfg PlainConfig, key []byte) error {
 		}
 
 		doc := userDoc{
-			Version: docVersion,
+			Version: userDocWriteVersion,
 			Auth: userAuthDoc{
 				Type: authType,
 			},

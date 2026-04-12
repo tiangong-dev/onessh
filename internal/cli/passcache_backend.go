@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/tiangong-dev/shush"
 )
 
 const (
@@ -30,17 +28,11 @@ func defaultAgentSocketFlagValue() string {
 	if raw := strings.TrimSpace(os.Getenv("ONESSH_AGENT_SOCKET")); raw != "" {
 		return raw
 	}
-	if raw := strings.TrimSpace(os.Getenv("SHUSH_SOCKET")); raw != "" {
-		return raw
-	}
 	return ""
 }
 
 func defaultAgentCapabilityFlagValue() string {
 	if raw := strings.TrimSpace(os.Getenv(onesshAgentCapabilityEnv)); raw != "" {
-		return raw
-	}
-	if raw := strings.TrimSpace(os.Getenv(shush.EnvCapability)); raw != "" {
 		return raw
 	}
 	return ""

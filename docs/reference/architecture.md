@@ -60,11 +60,11 @@ For each command execution, OneSSH resolves runtime context in this order:
 2. Resolve data path.
 3. Resolve agent socket:
    - explicit `--agent-socket`
-   - `ONESSH_AGENT_SOCKET` / `SHUSH_SOCKET`
+   - `ONESSH_AGENT_SOCKET`
    - default socket derived from parent shell PID.
 4. Resolve agent capability:
    - explicit `--agent-capability`
-   - `ONESSH_AGENT_CAPABILITY` / `SHUSH_CAPABILITY`
+   - `ONESSH_AGENT_CAPABILITY`
    - default capability derived from `uid + parent shell PID`.
 5. Build cache key namespace:
    - `onessh:passphrase:v1:<canonical-data-path>`.
