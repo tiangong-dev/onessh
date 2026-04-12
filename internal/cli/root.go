@@ -31,7 +31,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 	var proxyJump string
 
 	rootCmd := &cobra.Command{
-		Use:           "onessh [host] [-- <ssh-args...>]",
+		Use:           "onessh <host-alias> [-- <ssh-args...>]",
 		Short:         "Manage and connect SSH hosts from encrypted config",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -44,7 +44,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 			return runConnect(cmd, opts, alias, sshArgs, proxyJump, cmd.Flags().Changed("proxy-jump"))
 		},
 	}
-	rootCmd.Flags().StringVarP(&proxyJump, "proxy-jump", "J", "", "Temporary jump host: onessh alias or user@host:port")
+	rootCmd.Flags().StringVarP(&proxyJump, "proxy-jump", "J", "", "ProxyJump via onessh alias or user@host:port (overrides stored proxy-jump)")
 
 	rootCmd.PersistentFlags().StringVar(&opts.dataPath, "data", "", "Path to data directory")
 	rootCmd.PersistentFlags().DurationVar(&opts.cacheTTL, "cache-ttl", 10*time.Minute, "Master password cache duration")
@@ -121,7 +121,7 @@ func NewRootCmd(version, commit, date string) *cobra.Command {
 		newRmCmd(opts),
 		newLsCmd(opts),
 		newShowCmd(opts),
-		newTestCmd(opts),
+		newPingCmd(opts),
 		newExecCmd(opts),
 		newCpCmd(opts),
 		newAgentCmd(opts),

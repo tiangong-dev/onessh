@@ -122,7 +122,7 @@ func newAgentClearAllCmd(opts *rootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "clear-all",
-		Short: "Clear all cached secrets and askpass tokens",
+		Short: "Clear all cached passwords and tokens from the agent",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			socketPath, err := resolveAgentSocketPath(resolveSocketFlag(socket, opts))

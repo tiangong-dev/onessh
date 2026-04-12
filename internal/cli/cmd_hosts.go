@@ -499,6 +499,6 @@ func newShowCmd(opts *rootOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table|yaml)")
-	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive values (only applies to yaml output)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive values in output (yaml only)")
 	return cmd
 }

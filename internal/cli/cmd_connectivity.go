@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTestCmd(opts *rootOptions) *cobra.Command {
+func newPingCmd(opts *rootOptions) *cobra.Command {
 	var (
 		all       bool
 		timeout   int
@@ -22,8 +22,8 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "test [<host-alias>]",
-		Short: "Test SSH connectivity to one or all hosts",
+		Use:   "ping [<host-alias>]",
+		Short: "Check SSH connectivity to one or all hosts",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := opts.repository()
@@ -47,7 +47,7 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 
-				anyFailed := runBatchTest(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability)
+				anyFailed := runBatchPing(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability)
 				if anyFailed {
 					return errors.New("one or more hosts failed connectivity check")
 				}
@@ -67,10 +67,10 @@ func newTestCmd(opts *rootOptions) *cobra.Command {
 				return err
 			}
 			if testErr := runSSHTest(cfg, target, userName, auth, timeout, opts.agentSocket, opts.agentCapability); testErr != nil {
-				opts.logEvent("test", alias, target.Host, userName, "fail", testErr)
+				opts.logEvent("ping", alias, target.Host, userName, "fail", testErr)
 				return fmt.Errorf("connectivity check failed: %w", testErr)
 			}
-			opts.logEvent("test", alias, target.Host, userName, "ok", nil)
+			opts.logEvent("ping", alias, target.Host, userName, "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ %s is reachable\n", alias)
 			return nil
 		},

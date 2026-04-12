@@ -25,7 +25,7 @@
 | `onessh exec --tag <tag> <cmd>` | Batch exec by tag |
 | `onessh cp <src>... <dst>` | Copy via scp (`alias:path` notation) |
 | `onessh cp --tag <tag> files... :/path` | Batch upload by tag |
-| `onessh test [<alias>]` | Connectivity check; `--all`, `--tag`, `--filter` |
+| `onessh ping [<alias>]` | Connectivity check; `--all`, `--tag`, `--filter` |
 | `onessh completion` (`bash`, `zsh`, `fish`, `powershell`) | Shell completion |
 | `onessh version` | Version and build info |
 

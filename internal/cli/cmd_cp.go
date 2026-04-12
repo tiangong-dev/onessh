@@ -133,7 +133,7 @@ Use alias:path to specify a remote path:
 		},
 	}
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "Recursively copy directories")
-	cmd.Flags().StringVar(&filterTag, "tag", "", "Upload to hosts matching tag (batch mode)")
+	cmd.Flags().StringVar(&filterTag, "tag", "", "Upload to hosts matching tag")
 	cmd.Flags().StringVar(&filter, "filter", "", "Filter hosts by glob pattern (matches alias, host, description)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show matched hosts without executing")
 	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")

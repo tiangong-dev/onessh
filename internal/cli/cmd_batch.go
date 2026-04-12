@@ -91,7 +91,7 @@ func printBatchResults(out, errOut io.Writer, aliases []string, results []batchR
 	return anyFailed
 }
 
-func runBatchTest(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string) bool {
+func runBatchPing(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string) bool {
 	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		return batchResult{err: runSSHTest(cfg, host, userName, auth, timeout, agentSocket, agentCapability)}
 	})

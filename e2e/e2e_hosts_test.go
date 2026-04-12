@@ -89,7 +89,7 @@ func TestCLIInitAddListShowDryRun(t *testing.T) {
 		"--data", dataDir,
 		"--agent-socket", socketPath,
 		"--agent-capability", capability,
-		"test", "--all", "--dry-run",
+		"ping", "--all", "--dry-run",
 	)
 	if err != nil {
 		t.Fatalf("run dry-run test: %v\n%s", err, dryRunOut)

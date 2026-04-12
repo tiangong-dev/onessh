@@ -25,7 +25,7 @@
 | `onessh exec --tag <tag> <cmd>` | 按标签批量执行 |
 | `onessh cp <src>... <dst>` | 类 scp 传输（`alias:path`） |
 | `onessh cp --tag <tag> files... :/path` | 按标签批量上传 |
-| `onessh test [<alias>]` | 连通性；支持 `--all`、`--tag`、`--filter` |
+| `onessh ping [<alias>]` | 连通性；支持 `--all`、`--tag`、`--filter` |
 | `onessh completion`（`bash`、`zsh`、`fish`、`powershell`） | Shell 补全 |
 | `onessh version` | 版本与构建信息 |
 

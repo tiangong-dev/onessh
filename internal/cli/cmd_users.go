@@ -24,6 +24,7 @@ func newUserCmd(opts *rootOptions) *cobra.Command {
 
 	cmd.AddCommand(
 		newUserListCmd(opts),
+		newUserShowCmd(opts),
 		newUserAddCmd(opts),
 		newUserUpdateCmd(opts),
 		newUserRmCmd(opts),
@@ -81,6 +82,70 @@ func newUserListCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
+	return cmd
+}
+
+func newUserShowCmd(opts *rootOptions) *cobra.Command {
+	var outputFormat string
+	var showSecrets bool
+
+	cmd := &cobra.Command{
+		Use:   "show <user-alias>",
+		Short: "Show detailed information for a user profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			normalizedFormat, err := validateOutputFormat(outputFormat, "table", "yaml")
+			if err != nil {
+				return err
+			}
+
+			alias := normalizeUserAlias(args[0])
+			if alias == "" {
+				return errors.New("user alias cannot be empty")
+			}
+
+			repo, err := opts.repository()
+			if err != nil {
+				return err
+			}
+
+			cfg, pass, err := loadConfig(opts, repo)
+			if err != nil {
+				return err
+			}
+			defer wipe(pass)
+
+			userCfg, exists := cfg.Users[alias]
+			if !exists {
+				return fmt.Errorf("user profile %q not found", alias)
+			}
+
+			if normalizedFormat == "yaml" {
+				outCfg := store.PlainConfig{
+					Hosts: map[string]store.HostConfig{},
+					Users: map[string]store.UserConfig{alias: userCfg},
+				}
+				if !showSecrets {
+					outCfg = redactConfigForDump(outCfg)
+				}
+				return renderHostDetailsYAML(cmd.OutOrStdout(), outCfg)
+			}
+
+			// Table output
+			fmt.Fprintf(cmd.OutOrStdout(), "Alias:     %s\n", alias)
+			fmt.Fprintf(cmd.OutOrStdout(), "User:      %s\n", userCfg.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Auth:      %s\n", summarizeAuth(userCfg.Auth))
+			usedBy := hostAliasesUsingUser(cfg, alias)
+			if len(usedBy) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Used by:   %s\n", strings.Join(usedBy, ", "))
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Used by:   -\n")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table|yaml)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include sensitive values (only applies to yaml output)")
 	return cmd
 }
 
@@ -335,26 +400,12 @@ func newPasswdCmd(opts *rootOptions) *cobra.Command {
 }
 
 func newLogoutCmd(opts *rootOptions) *cobra.Command {
-	var clearAll bool
-
 	cmd := &cobra.Command{
 		Use:   "logout",
-		Short: "Clear cached master password",
+		Short: "Clear cached master password for current config",
+		Long:  "Clear the cached master password for the current data directory.\n\nTo clear all cached passwords and tokens in the agent, use 'onessh agent clear-all'.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if clearAll {
-				socketPath, err := resolveAgentSocketPath(resolveSocketFlag("", opts))
-				if err != nil {
-					return err
-				}
-				if err := clearPassphraseCacheByPrefix(socketPath, passphraseCacheKeyPrefixV1, opts.agentCapability); err != nil {
-					fmt.Fprintln(cmd.OutOrStdout(), "Agent is not running.")
-					return nil
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), "✔ all cached master passwords cleared")
-				return nil
-			}
-
 			repo, err := opts.repository()
 			if err != nil {
 				return err
@@ -376,7 +427,6 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&clearAll, "all", false, "Clear all cached master passwords in the agent")
 	return cmd
 }
 
