@@ -33,8 +33,10 @@ func TestServiceConnectRunsTransport(t *testing.T) {
 		SSHArgs:           []string{"-A"},
 		ProxyJumpOverride: "jump",
 		ProxyJumpChanged:  true,
-		AgentSocket:       "/tmp/onessh.sock",
-		AgentCapability:   "capability",
+		Agent: AgentConfig{
+			Socket:     "/tmp/onessh.sock",
+			Capability: "capability",
+		},
 		IO: appruntime.IOStreams{
 			ErrOut: &errOut,
 		},
@@ -61,8 +63,8 @@ func TestServiceConnectRunsTransport(t *testing.T) {
 	if !reflect.DeepEqual(transport.req.SSHArgs, []string{"-A"}) {
 		t.Fatalf("unexpected ssh args: %#v", transport.req.SSHArgs)
 	}
-	if transport.req.AgentSocket != "/tmp/onessh.sock" || transport.req.AgentCapability != "capability" {
-		t.Fatalf("unexpected agent fields: %#v", transport.req)
+	if transport.req.Agent.Socket != "/tmp/onessh.sock" || transport.req.Agent.Capability != "capability" {
+		t.Fatalf("unexpected agent config: %#v", transport.req.Agent)
 	}
 }
 

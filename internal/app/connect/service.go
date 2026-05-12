@@ -8,13 +8,14 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
+	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 )
 
-type IdentityResolver interface {
-	ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error)
-}
+type IdentityResolver = ports.IdentityResolver
+
+type AgentConfig = ports.AgentConfig
 
 type Transport interface {
 	Connect(ctx context.Context, req TransportRequest) error
@@ -32,8 +33,7 @@ type Input struct {
 	ProxyJumpOverride string
 	ProxyJumpChanged  bool
 	Quiet             bool
-	AgentSocket       string
-	AgentCapability   string
+	Agent             AgentConfig
 	IO                appruntime.IOStreams
 }
 
@@ -46,14 +46,13 @@ type Output struct {
 }
 
 type TransportRequest struct {
-	Config          store.PlainConfig
-	Host            store.HostConfig
-	UserName        string
-	Auth            store.AuthConfig
-	SSHArgs         []string
-	ErrOut          io.Writer
-	AgentSocket     string
-	AgentCapability string
+	Config   store.PlainConfig
+	Host     store.HostConfig
+	UserName string
+	Auth     store.AuthConfig
+	SSHArgs  []string
+	ErrOut   io.Writer
+	Agent    AgentConfig
 }
 
 func (s Service) Connect(ctx context.Context, input Input) (Output, error) {
@@ -96,14 +95,13 @@ func (s Service) Connect(ctx context.Context, input Input) (Output, error) {
 	}
 
 	err = s.Transport.Connect(ctx, TransportRequest{
-		Config:          input.Config,
-		Host:            target,
-		UserName:        userName,
-		Auth:            auth,
-		SSHArgs:         append([]string{}, input.SSHArgs...),
-		ErrOut:          input.IO.ErrOut,
-		AgentSocket:     input.AgentSocket,
-		AgentCapability: input.AgentCapability,
+		Config:   input.Config,
+		Host:     target,
+		UserName: userName,
+		Auth:     auth,
+		SSHArgs:  append([]string{}, input.SSHArgs...),
+		ErrOut:   input.IO.ErrOut,
+		Agent:    input.Agent,
 	})
 	return out, err
 }

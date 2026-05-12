@@ -1,30 +1,18 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	"onessh/internal/domain"
+	"onessh/internal/presenters"
 	"onessh/internal/store"
 
 	"gopkg.in/yaml.v3"
 )
 
-type hostListRow struct {
-	Alias     string `json:"alias"`
-	Desc      string `json:"desc"`
-	Host      string `json:"host"`
-	User      string `json:"user"`
-	UserRef   string `json:"user_ref"`
-	Auth      string `json:"auth"`
-	Port      int    `json:"port"`
-	ProxyJump string `json:"proxy_jump"`
-	Tags      string `json:"tags"`
-	Status    string `json:"status"`
-}
+type hostListRow = presenters.HostListRow
 
 func buildHostListRows(cfg store.PlainConfig, aliases []string) []hostListRow {
 	rows := make([]hostListRow, 0, len(aliases))
@@ -65,31 +53,11 @@ func buildHostListRows(cfg store.PlainConfig, aliases []string) []hostListRow {
 }
 
 func renderHostListJSON(out io.Writer, rows []hostListRow) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(rows)
+	return presenters.RenderHostListJSON(out, rows)
 }
 
 func renderHostListTable(out io.Writer, rows []hostListRow) error {
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ALIAS\tDESC\tHOST\tUSER\tUSER_REF\tAUTH\tPORT\tPROXY_JUMP\tTAGS\tSTATUS")
-	for _, row := range rows {
-		fmt.Fprintf(
-			w,
-			"%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			row.Alias,
-			row.Desc,
-			row.Host,
-			row.User,
-			row.UserRef,
-			row.Auth,
-			row.Port,
-			row.ProxyJump,
-			row.Tags,
-			row.Status,
-		)
-	}
-	return w.Flush()
+	return presenters.RenderHostListTable(out, rows)
 }
 
 func buildHostDumpConfig(cfg store.PlainConfig, alias string, host store.HostConfig) store.PlainConfig {

@@ -68,8 +68,10 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 		ProxyJumpOverride: proxyJumpOverride,
 		ProxyJumpChanged:  proxyJumpChanged,
 		Quiet:             opts.quiet,
-		AgentSocket:       opts.agentSocket,
-		AgentCapability:   opts.agentCapability,
+		Agent: connectapp.AgentConfig{
+			Socket:     opts.agentSocket,
+			Capability: opts.agentCapability,
+		},
 		IO: appruntime.IOStreams{
 			ErrOut: cmd.ErrOrStderr(),
 		},
@@ -93,7 +95,7 @@ func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host s
 type connectTransport struct{}
 
 func (connectTransport) Connect(_ context.Context, req connectapp.TransportRequest) error {
-	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.ErrOut, req.AgentSocket, req.AgentCapability)
+	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
 }
 
 func executeSSH(

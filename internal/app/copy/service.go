@@ -8,13 +8,12 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
+	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 )
 
-type IdentityResolver interface {
-	ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error)
-}
+type IdentityResolver = ports.IdentityResolver
 
 type Runner interface {
 	CopyRemote(ctx context.Context, req Request) error
@@ -25,10 +24,7 @@ type Service struct {
 	Runner           Runner
 }
 
-type AgentConfig struct {
-	Socket     string
-	Capability string
-}
+type AgentConfig = ports.AgentConfig
 
 type Input struct {
 	Config     store.PlainConfig
