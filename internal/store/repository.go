@@ -109,7 +109,7 @@ func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 	}
 	defer lock.Close()
 
-	return r.saveWithoutLock(cfg, passphrase)
+	return r.saveStaged(cfg, passphrase, true)
 }
 
 func (r Repository) saveWithoutLock(cfg PlainConfig, passphrase []byte) error {
@@ -150,6 +150,10 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	}
 	defer lock.Close()
 
+	return r.saveStaged(cfg, passphrase, false)
+}
+
+func (r Repository) saveStaged(cfg PlainConfig, passphrase []byte, preserveExistingMeta bool) error {
 	stagedPath, cleanupStaged, err := prepareSwapTempDir(r.Path, "stage")
 	if err != nil {
 		return fmt.Errorf("prepare staged store: %w", err)
@@ -157,40 +161,51 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	defer cleanupStaged()
 
 	stagedRepo := Repository{Path: stagedPath}
+	if preserveExistingMeta {
+		if err := r.copyExistingMetaToStage(stagedRepo); err != nil {
+			return err
+		}
+	}
 	if err := stagedRepo.saveWithoutLock(cfg, passphrase); err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(r.Path); err != nil {
+	if err := r.commitStagedStore(stagedRepo); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r Repository) copyExistingMetaToStage(stagedRepo Repository) error {
+	if _, err := os.Stat(r.metaPath()); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			if err := os.Rename(stagedPath, r.Path); err != nil {
-				return fmt.Errorf("activate staged store: %w", err)
-			}
 			return nil
 		}
-		return fmt.Errorf("stat config store path %s: %w", r.Path, err)
+		return fmt.Errorf("stat metadata: %w", err)
 	}
+	if err := copyFileAtomic(r.metaPath(), stagedRepo.metaPath()); err != nil {
+		return fmt.Errorf("stage existing metadata: %w", err)
+	}
+	return nil
+}
 
+func (r Repository) commitStagedStore(stagedRepo Repository) error {
 	backupPath, cleanupBackupPath, err := prepareSwapTempDir(r.Path, "backup")
 	if err != nil {
 		return fmt.Errorf("prepare backup path: %w", err)
 	}
 	defer cleanupBackupPath()
-	if err := os.RemoveAll(backupPath); err != nil {
-		return fmt.Errorf("prepare backup path: %w", err)
-	}
 
-	if err := os.Rename(r.Path, backupPath); err != nil {
+	backupRepo := Repository{Path: backupPath}
+	if err := backupManagedStoreFiles(r, backupRepo); err != nil {
 		return fmt.Errorf("backup current store: %w", err)
 	}
-	if err := os.Rename(stagedPath, r.Path); err != nil {
-		if rollbackErr := os.Rename(backupPath, r.Path); rollbackErr != nil {
-			return fmt.Errorf("activate staged store: %w (rollback failed: %v)", err, rollbackErr)
-		}
-		return fmt.Errorf("activate staged store: %w", err)
-	}
 
-	// Best effort cleanup. The new store is already active at this point.
-	_ = os.RemoveAll(backupPath)
+	if err := applyManagedStoreFiles(stagedRepo, r); err != nil {
+		if rollbackErr := restoreManagedStoreFiles(backupRepo, r); rollbackErr != nil {
+			return fmt.Errorf("commit staged store: %w (rollback failed: %v)", err, rollbackErr)
+		}
+		return fmt.Errorf("commit staged store: %w", err)
+	}
 	return nil
 }
