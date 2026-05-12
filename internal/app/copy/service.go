@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	commonapp "onessh/internal/app/common"
 	"onessh/internal/domain"
 	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
@@ -22,6 +23,7 @@ type Runner interface {
 type Service struct {
 	IdentityResolver IdentityResolver
 	Runner           Runner
+	Audit            ports.Audit
 }
 
 type AgentConfig = ports.AgentConfig
@@ -108,5 +110,6 @@ func (s Service) Copy(ctx context.Context, input Input) (Output, error) {
 		Stdout:     input.IO.Out,
 		Stderr:     input.IO.ErrOut,
 	})
+	commonapp.RecordAuditResult(s.Audit, "cp", out.Alias, out.Host, out.UserName, err)
 	return out, err
 }

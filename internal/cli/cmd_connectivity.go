@@ -43,8 +43,7 @@ func newPingCmd(opts *rootOptions) *cobra.Command {
 				}
 
 				if dryRun {
-					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
-					return nil
+					return printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
 				}
 
 				anyFailed := runBatchPing(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability)

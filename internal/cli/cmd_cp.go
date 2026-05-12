@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	copyapp "onessh/internal/app/copy"
+	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
@@ -69,9 +70,10 @@ Use alias:path to specify a remote path:
 				}
 
 				if dryRun {
-					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
-					fmt.Fprintf(cmd.OutOrStdout(), "Upload: %s -> :%s\n", strings.Join(batchLocalPaths, ", "), batchRemotePath)
-					return nil
+					if err := printDryRunHosts(cmd.OutOrStdout(), cfg, aliases); err != nil {
+						return err
+					}
+					return presenters.RenderDryRunUpload(cmd.OutOrStdout(), batchLocalPaths, batchRemotePath)
 				}
 
 				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket, opts.agentCapability)
@@ -121,8 +123,9 @@ Use alias:path to specify a remote path:
 			service := copyapp.Service{
 				IdentityResolver: copyIdentityResolver{},
 				Runner:           copyRunner{},
+				Audit:            opts.auditSink(),
 			}
-			out, cpErr := service.Copy(cmd.Context(), copyapp.Input{
+			_, cpErr := service.Copy(cmd.Context(), copyapp.Input{
 				Config:     cfg,
 				Alias:      alias,
 				RemotePath: remotePath,
@@ -135,13 +138,6 @@ Use alias:path to specify a remote path:
 				},
 				IO: appruntime.IOStreams{},
 			})
-			if cpErr != nil {
-				if out.Host != "" {
-					opts.logEvent("cp", out.Alias, out.Host, out.UserName, "fail", cpErr)
-				}
-			} else {
-				opts.logEvent("cp", out.Alias, out.Host, out.UserName, "ok", nil)
-			}
 			return cpErr
 		},
 	}

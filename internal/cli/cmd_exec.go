@@ -3,12 +3,12 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	execapp "onessh/internal/app/exec"
+	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
@@ -46,9 +46,10 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				}
 
 				if dryRun {
-					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
-					fmt.Fprintf(cmd.OutOrStdout(), "Command: %s\n", strings.Join(args, " "))
-					return nil
+					if err := printDryRunHosts(cmd.OutOrStdout(), cfg, aliases); err != nil {
+						return err
+					}
+					return presenters.RenderDryRunCommand(cmd.OutOrStdout(), args)
 				}
 
 				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability)
@@ -69,8 +70,9 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 			service := execapp.Service{
 				IdentityResolver: execIdentityResolver{},
 				Runner:           execRemoteRunner{},
+				Audit:            opts.auditSink(),
 			}
-			out, execErr := service.Exec(cmd.Context(), execapp.Input{
+			_, execErr := service.Exec(cmd.Context(), execapp.Input{
 				Config:    cfg,
 				Alias:     alias,
 				RemoteCmd: args[1:],
@@ -80,13 +82,6 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				},
 				IO: appruntime.IOStreams{},
 			})
-			if execErr != nil {
-				if out.Host != "" {
-					opts.logEvent("exec", out.Alias, out.Host, out.UserName, "fail", execErr)
-				}
-			} else {
-				opts.logEvent("exec", out.Alias, out.Host, out.UserName, "ok", nil)
-			}
 			return execErr
 		},
 	}

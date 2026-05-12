@@ -8,6 +8,7 @@ import (
 	"os"
 
 	commonapp "onessh/internal/app/common"
+	"onessh/internal/presenters"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -49,40 +50,17 @@ func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, paral
 }
 
 func printBatchResults(out, errOut io.Writer, aliases []string, results []batchResult) bool {
-	anyFailed := false
-	for i, alias := range aliases {
-		r := results[i]
-		if r.Skip {
-			fmt.Fprintf(errOut, "SKIP %s: %v\n", alias, r.Err)
-			continue
-		}
-		if len(r.Stdout) > 0 || len(r.Stderr) > 0 {
-			fmt.Fprintf(out, "=== %s ===\n", alias)
-			if len(r.Stdout) > 0 {
-				if _, err := out.Write(r.Stdout); err != nil {
-					fmt.Fprintf(errOut, "write stdout for %s: %v\n", alias, err)
-					anyFailed = true
-				}
-			}
-			if len(r.Stderr) > 0 {
-				if _, err := errOut.Write(r.Stderr); err != nil {
-					fmt.Fprintf(errOut, "write stderr for %s: %v\n", alias, err)
-					anyFailed = true
-				}
-			}
-		}
-		if r.Err != nil {
-			if len(r.Stdout) == 0 && len(r.Stderr) == 0 {
-				fmt.Fprintf(out, "%-20s  FAIL\n", alias)
-			} else {
-				fmt.Fprintf(errOut, "FAIL %s: %v\n", alias, r.Err)
-			}
-			anyFailed = true
-		} else if len(r.Stdout) == 0 && len(r.Stderr) == 0 {
-			fmt.Fprintf(out, "%-20s  OK\n", alias)
+	rows := make([]presenters.BatchResult, len(results))
+	for i, result := range results {
+		rows[i] = presenters.BatchResult{
+			Alias:  result.Alias,
+			Skip:   result.Skip,
+			Err:    result.Err,
+			Stdout: result.Stdout,
+			Stderr: result.Stderr,
 		}
 	}
-	return anyFailed
+	return presenters.RenderBatchResults(out, errOut, aliases, rows)
 }
 
 type batchIdentityResolver struct{}

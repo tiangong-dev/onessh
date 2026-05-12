@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 )
@@ -156,6 +157,106 @@ func TestServiceCopyRunnerErrorReturnsOutputForAudit(t *testing.T) {
 	}
 }
 
+func TestServiceCopyAuditsRunnerResult(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		audit := &fakeAudit{}
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+			Audit:            audit,
+		}
+
+		_, err := service.Copy(context.Background(), Input{
+			Config:     testConfig(),
+			Alias:      "prod",
+			RemotePath: "/tmp/app",
+			LocalPaths: []string{"./app"},
+			IsUpload:   true,
+		})
+		if err != nil {
+			t.Fatalf("Copy: %v", err)
+		}
+		if len(audit.events) != 1 {
+			t.Fatalf("audit events = %d, want 1", len(audit.events))
+		}
+		want := ports.AuditEvent{Action: "cp", Alias: "prod", Host: "prod.example.com", User: "alice", Result: "ok"}
+		if !reflect.DeepEqual(audit.events[0], want) {
+			t.Fatalf("audit event = %#v, want %#v", audit.events[0], want)
+		}
+	})
+
+	t.Run("fail", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("scp failed")
+		audit := &fakeAudit{}
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{err: wantErr},
+			Audit:            audit,
+		}
+
+		_, err := service.Copy(context.Background(), Input{
+			Config:     testConfig(),
+			Alias:      "prod",
+			RemotePath: "/tmp/app",
+			LocalPaths: []string{"./app"},
+			IsUpload:   true,
+		})
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("Copy error = %v, want %v", err, wantErr)
+		}
+		if len(audit.events) != 1 {
+			t.Fatalf("audit events = %d, want 1", len(audit.events))
+		}
+		want := ports.AuditEvent{Action: "cp", Alias: "prod", Host: "prod.example.com", User: "alice", Result: "fail", Error: "scp failed"}
+		if !reflect.DeepEqual(audit.events[0], want) {
+			t.Fatalf("audit event = %#v, want %#v", audit.events[0], want)
+		}
+	})
+}
+
+func TestServiceCopyIgnoresNilAndFailingAuditSink(t *testing.T) {
+	t.Parallel()
+
+	input := Input{
+		Config:     testConfig(),
+		Alias:      "prod",
+		RemotePath: "/tmp/app",
+		LocalPaths: []string{"./app"},
+		IsUpload:   true,
+	}
+
+	t.Run("nil", func(t *testing.T) {
+		t.Parallel()
+
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+		}
+		if _, err := service.Copy(context.Background(), input); err != nil {
+			t.Fatalf("Copy with nil audit: %v", err)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+			Audit:            &fakeAudit{err: errors.New("audit unavailable")},
+		}
+		if _, err := service.Copy(context.Background(), input); err != nil {
+			t.Fatalf("Copy with failing audit: %v", err)
+		}
+	})
+}
+
 func testConfig() store.PlainConfig {
 	return store.PlainConfig{
 		Users: map[string]store.UserConfig{
@@ -194,5 +295,15 @@ type fakeRunner struct {
 func (f *fakeRunner) CopyRemote(_ context.Context, req Request) error {
 	f.called = true
 	f.req = req
+	return f.err
+}
+
+type fakeAudit struct {
+	events []ports.AuditEvent
+	err    error
+}
+
+func (f *fakeAudit) Log(event ports.AuditEvent) error {
+	f.events = append(f.events, event)
 	return f.err
 }

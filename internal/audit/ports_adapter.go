@@ -4,14 +4,14 @@ import "onessh/internal/ports"
 
 var _ ports.AuditLogger = PortLoggerAdapter{}
 
-// PortLoggerAdapter adapts Logger to the ports.AuditLogger interface.
+// PortLoggerAdapter adapts Logger to the ports.Audit interface.
 type PortLoggerAdapter struct {
 	Logger *Logger
 }
 
-func (a PortLoggerAdapter) Log(event ports.AuditEvent) {
+func (a PortLoggerAdapter) Log(event ports.AuditEvent) error {
 	if a.Logger == nil {
-		return
+		return nil
 	}
 	a.Logger.Log(Event{
 		Time:   event.Time,
@@ -23,4 +23,5 @@ func (a PortLoggerAdapter) Log(event ports.AuditEvent) {
 		Error:  event.Error,
 		Extra:  event.Extra,
 	})
+	return nil
 }

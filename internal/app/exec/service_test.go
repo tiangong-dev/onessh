@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 )
@@ -143,6 +144,96 @@ func TestServiceExecRunnerErrorReturnsOutputForAudit(t *testing.T) {
 	}
 }
 
+func TestServiceExecAuditsRunnerResult(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		audit := &fakeAudit{}
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+			Audit:            audit,
+		}
+
+		_, err := service.Exec(context.Background(), Input{
+			Config:    testConfig(),
+			Alias:     "prod",
+			RemoteCmd: []string{"uptime"},
+		})
+		if err != nil {
+			t.Fatalf("Exec: %v", err)
+		}
+		if len(audit.events) != 1 {
+			t.Fatalf("audit events = %d, want 1", len(audit.events))
+		}
+		want := ports.AuditEvent{Action: "exec", Alias: "prod", Host: "prod.example.com", User: "alice", Result: "ok"}
+		if !reflect.DeepEqual(audit.events[0], want) {
+			t.Fatalf("audit event = %#v, want %#v", audit.events[0], want)
+		}
+	})
+
+	t.Run("fail", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("ssh failed")
+		audit := &fakeAudit{}
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{err: wantErr},
+			Audit:            audit,
+		}
+
+		_, err := service.Exec(context.Background(), Input{
+			Config:    testConfig(),
+			Alias:     "prod",
+			RemoteCmd: []string{"uptime"},
+		})
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("Exec error = %v, want %v", err, wantErr)
+		}
+		if len(audit.events) != 1 {
+			t.Fatalf("audit events = %d, want 1", len(audit.events))
+		}
+		want := ports.AuditEvent{Action: "exec", Alias: "prod", Host: "prod.example.com", User: "alice", Result: "fail", Error: "ssh failed"}
+		if !reflect.DeepEqual(audit.events[0], want) {
+			t.Fatalf("audit event = %#v, want %#v", audit.events[0], want)
+		}
+	})
+}
+
+func TestServiceExecIgnoresNilAndFailingAuditSink(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		t.Parallel()
+
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+		}
+		_, err := service.Exec(context.Background(), Input{Config: testConfig(), Alias: "prod", RemoteCmd: []string{"uptime"}})
+		if err != nil {
+			t.Fatalf("Exec with nil audit: %v", err)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		service := Service{
+			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			Runner:           &fakeRunner{},
+			Audit:            &fakeAudit{err: errors.New("audit unavailable")},
+		}
+		_, err := service.Exec(context.Background(), Input{Config: testConfig(), Alias: "prod", RemoteCmd: []string{"uptime"}})
+		if err != nil {
+			t.Fatalf("Exec with failing audit: %v", err)
+		}
+	})
+}
+
 func testConfig() store.PlainConfig {
 	return store.PlainConfig{
 		Users: map[string]store.UserConfig{
@@ -181,5 +272,15 @@ type fakeRunner struct {
 func (f *fakeRunner) ExecRemote(_ context.Context, req RemoteRequest) error {
 	f.called = true
 	f.req = req
+	return f.err
+}
+
+type fakeAudit struct {
+	events []ports.AuditEvent
+	err    error
+}
+
+func (f *fakeAudit) Log(event ports.AuditEvent) error {
+	f.events = append(f.events, event)
 	return f.err
 }

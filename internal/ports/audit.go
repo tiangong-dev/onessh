@@ -12,14 +12,25 @@ type AuditEvent struct {
 	Extra  map[string]string
 }
 
-// AuditLogger is the narrow write-side audit logging port.
-type AuditLogger interface {
-	Log(AuditEvent)
+// Audit is the narrow write-side audit logging port.
+type Audit interface {
+	Log(AuditEvent) error
 }
 
-// AuditLoggerFunc adapts a function to AuditLogger.
+// AuditLogger is kept as a compatibility alias for older call sites.
+type AuditLogger = Audit
+
+// AuditFunc adapts a function to Audit.
+type AuditFunc func(AuditEvent) error
+
+func (f AuditFunc) Log(event AuditEvent) error {
+	return f(event)
+}
+
+// AuditLoggerFunc adapts a fire-and-forget function to Audit.
 type AuditLoggerFunc func(AuditEvent)
 
-func (f AuditLoggerFunc) Log(event AuditEvent) {
+func (f AuditLoggerFunc) Log(event AuditEvent) error {
 	f(event)
+	return nil
 }

@@ -1,11 +1,11 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 	"sort"
 
 	"onessh/internal/domain"
+	"onessh/internal/presenters"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -15,18 +15,28 @@ func hostHasTag(host store.HostConfig, tag string) bool {
 	return domain.HostHasTag(host.Tags, tag)
 }
 
-func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) {
-	fmt.Fprintf(out, "Matched %d host(s):\n", len(aliases))
+func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) error {
+	return presenters.RenderDryRunHosts(out, buildDryRunHosts(cfg, aliases))
+}
+
+func buildDryRunHosts(cfg store.PlainConfig, aliases []string) []presenters.DryRunHost {
+	rows := make([]presenters.DryRunHost, 0, len(aliases))
 	for _, alias := range aliases {
 		host := cfg.Hosts[alias]
 		port := domain.EffectivePort(host.Port)
 		userName, _, err := resolveHostIdentity(cfg, host)
-		if err != nil {
-			fmt.Fprintf(out, "  %-20s %s (SKIP: %v)\n", alias, host.Host, err)
-		} else {
-			fmt.Fprintf(out, "  %-20s %s@%s:%d\n", alias, userName, host.Host, port)
+		row := presenters.DryRunHost{
+			Alias: alias,
+			Host:  host.Host,
+			User:  userName,
+			Port:  port,
 		}
+		if err != nil {
+			row.SkipError = err.Error()
+		}
+		rows = append(rows, row)
 	}
+	return rows
 }
 
 func collectFilteredHosts(cfg store.PlainConfig, tag, filter string) []string {

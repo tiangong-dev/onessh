@@ -60,8 +60,9 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	service := connectapp.Service{
 		IdentityResolver: connectIdentityResolver{},
 		Transport:        connectTransport{},
+		Audit:            opts.auditSink(),
 	}
-	out, connErr := service.Connect(cmd.Context(), connectapp.Input{
+	_, connErr := service.Connect(cmd.Context(), connectapp.Input{
 		Config:            cfg,
 		Alias:             alias,
 		SSHArgs:           sshArgs,
@@ -76,13 +77,6 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 			ErrOut: cmd.ErrOrStderr(),
 		},
 	})
-	if connErr != nil {
-		if out.Host != "" {
-			opts.logEvent("connect", out.Alias, out.Host, out.UserName, "fail", connErr)
-		}
-	} else {
-		opts.logEvent("connect", out.Alias, out.Host, out.UserName, "ok", nil)
-	}
 	return connErr
 }
 

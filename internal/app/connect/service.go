@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	commonapp "onessh/internal/app/common"
 	"onessh/internal/domain"
 	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
@@ -24,6 +25,7 @@ type Transport interface {
 type Service struct {
 	IdentityResolver IdentityResolver
 	Transport        Transport
+	Audit            ports.Audit
 }
 
 type Input struct {
@@ -103,5 +105,6 @@ func (s Service) Connect(ctx context.Context, input Input) (Output, error) {
 		ErrOut:   input.IO.ErrOut,
 		Agent:    input.Agent,
 	})
+	commonapp.RecordAuditResult(s.Audit, "connect", out.Alias, out.Host, out.UserName, err)
 	return out, err
 }
