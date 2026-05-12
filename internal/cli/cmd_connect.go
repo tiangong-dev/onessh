@@ -1,13 +1,15 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
-	"onessh/internal/domain"
+	connectapp "onessh/internal/app/connect"
+	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -55,33 +57,43 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 	}
 	defer wipe(pass)
 
-	target, exists := cfg.Hosts[alias]
-	if !exists {
-		return fmt.Errorf("host %q not found", alias)
+	service := connectapp.Service{
+		IdentityResolver: connectIdentityResolver{},
+		Transport:        connectTransport{},
 	}
-	if proxyJumpChanged {
-		target.ProxyJump = strings.TrimSpace(proxyJumpOverride)
-	}
-	userName, auth, err := resolveHostIdentity(cfg, target)
-	if err != nil {
-		return err
-	}
-
-	displayPort := domain.EffectivePort(target.Port)
-	displayTarget := target.Host
-	if userName != "" {
-		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
-	}
-	if !opts.quiet {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s:%d...\n", displayTarget, displayPort)
-	}
-	connErr := executeSSH(cfg, target, userName, auth, sshArgs, cmd.ErrOrStderr(), opts.agentSocket, opts.agentCapability)
+	out, connErr := service.Connect(cmd.Context(), connectapp.Input{
+		Config:            cfg,
+		Alias:             alias,
+		SSHArgs:           sshArgs,
+		ProxyJumpOverride: proxyJumpOverride,
+		ProxyJumpChanged:  proxyJumpChanged,
+		Quiet:             opts.quiet,
+		AgentSocket:       opts.agentSocket,
+		AgentCapability:   opts.agentCapability,
+		IO: appruntime.IOStreams{
+			ErrOut: cmd.ErrOrStderr(),
+		},
+	})
 	if connErr != nil {
-		opts.logEvent("connect", alias, target.Host, userName, "fail", connErr)
+		if out.Host != "" {
+			opts.logEvent("connect", out.Alias, out.Host, out.UserName, "fail", connErr)
+		}
 	} else {
-		opts.logEvent("connect", alias, target.Host, userName, "ok", nil)
+		opts.logEvent("connect", out.Alias, out.Host, out.UserName, "ok", nil)
 	}
 	return connErr
+}
+
+type connectIdentityResolver struct{}
+
+func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+	return resolveHostIdentity(cfg, host)
+}
+
+type connectTransport struct{}
+
+func (connectTransport) Connect(_ context.Context, req connectapp.TransportRequest) error {
+	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.ErrOut, req.AgentSocket, req.AgentCapability)
 }
 
 func executeSSH(
