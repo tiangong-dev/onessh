@@ -137,7 +137,10 @@ Use alias:path to specify a remote path:
 					Socket:     opts.agentSocket,
 					Capability: opts.agentCapability,
 				},
-				IO: appruntime.IOStreams{},
+				IO: appruntime.IOStreams{
+					Out:    cmd.OutOrStdout(),
+					ErrOut: cmd.ErrOrStderr(),
+				},
 			})
 			return cpErr
 		},

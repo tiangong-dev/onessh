@@ -53,6 +53,8 @@ type TransportRequest struct {
 	UserName string
 	Auth     store.AuthConfig
 	SSHArgs  []string
+	Stdin    io.Reader
+	Stdout   io.Writer
 	ErrOut   io.Writer
 	Agent    AgentConfig
 }
@@ -102,6 +104,8 @@ func (s Service) Connect(ctx context.Context, input Input) (Output, error) {
 		UserName: userName,
 		Auth:     auth,
 		SSHArgs:  append([]string{}, input.SSHArgs...),
+		Stdin:    input.IO.In,
+		Stdout:   input.IO.Out,
 		ErrOut:   input.IO.ErrOut,
 		Agent:    input.Agent,
 	})

@@ -21,7 +21,9 @@ type batchRunner func(alias string, host store.HostConfig, userName string, auth
 
 func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, parallel int, fn batchRunner) bool {
 	total := len(aliases)
-	showProgress := term.IsTerminal(int(os.Stderr.Fd()))
+	progressOut := cmd.ErrOrStderr()
+	progressFile, hasProgressFile := progressOut.(*os.File)
+	showProgress := hasProgressFile && term.IsTerminal(int(progressFile.Fd()))
 
 	results, err := commonapp.RunBatch(cmd.Context(), commonapp.BatchInput{
 		Config:           cfg,
@@ -33,13 +35,13 @@ func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, paral
 		}),
 		OnProgress: func(completed, _ int) {
 			if showProgress {
-				fmt.Fprintf(os.Stderr, "\r[%d/%d] completed", completed, total)
+				fmt.Fprintf(progressOut, "\r[%d/%d] completed", completed, total)
 			}
 		},
 	})
 
 	if showProgress {
-		fmt.Fprint(os.Stderr, "\r\033[K")
+		fmt.Fprint(progressOut, "\r\033[K")
 	}
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "batch failed: %v\n", err)

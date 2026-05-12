@@ -80,7 +80,10 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 					Socket:     opts.agentSocket,
 					Capability: opts.agentCapability,
 				},
-				IO: appruntime.IOStreams{},
+				IO: appruntime.IOStreams{
+					Out:    cmd.OutOrStdout(),
+					ErrOut: cmd.ErrOrStderr(),
+				},
 			})
 			return execErr
 		},

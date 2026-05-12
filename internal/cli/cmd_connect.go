@@ -74,6 +74,8 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 			Capability: opts.agentCapability,
 		},
 		IO: appruntime.IOStreams{
+			In:     cmd.InOrStdin(),
+			Out:    cmd.OutOrStdout(),
 			ErrOut: cmd.ErrOrStderr(),
 		},
 	})
@@ -89,7 +91,7 @@ func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host s
 type connectTransport struct{}
 
 func (connectTransport) Connect(_ context.Context, req connectapp.TransportRequest) error {
-	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
+	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.Stdin, req.Stdout, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
 }
 
 func executeSSH(
@@ -98,10 +100,21 @@ func executeSSH(
 	userName string,
 	auth store.AuthConfig,
 	sshArgs []string,
+	stdin io.Reader,
+	stdout io.Writer,
 	errOut io.Writer,
 	agentSocket string,
 	agentCapability string,
 ) error {
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 	hookCommand := buildRemoteHookCommand(host.PreConnect, host.PostConnect)
 
 	var extraFlags []string
@@ -131,7 +144,7 @@ func executeSSH(
 		return err
 	}
 	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, os.Stdout, os.Stderr)
+	return runExternalCommand(binary, args, env, extraFiles, stdin, stdout, errOut)
 }
 
 func buildRemoteHookCommand(preConnect, postConnect []string) string {
