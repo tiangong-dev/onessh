@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	execapp "onessh/internal/app/exec"
+	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -63,19 +66,26 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				return errors.New("host alias cannot be empty")
 			}
 
-			target, exists := cfg.Hosts[alias]
-			if !exists {
-				return fmt.Errorf("host %q not found", alias)
+			service := execapp.Service{
+				IdentityResolver: execIdentityResolver{},
+				Runner:           execRemoteRunner{},
 			}
-			userName, auth, err := resolveHostIdentity(cfg, target)
-			if err != nil {
-				return err
-			}
-			execErr := executeRemoteCmd(cfg, target, userName, auth, args[1:], opts.agentSocket, opts.agentCapability, nil, nil)
+			out, execErr := service.Exec(cmd.Context(), execapp.Input{
+				Config:    cfg,
+				Alias:     alias,
+				RemoteCmd: args[1:],
+				Agent: execapp.AgentConfig{
+					Socket:     opts.agentSocket,
+					Capability: opts.agentCapability,
+				},
+				IO: appruntime.IOStreams{},
+			})
 			if execErr != nil {
-				opts.logEvent("exec", alias, target.Host, userName, "fail", execErr)
+				if out.Host != "" {
+					opts.logEvent("exec", out.Alias, out.Host, out.UserName, "fail", execErr)
+				}
 			} else {
-				opts.logEvent("exec", alias, target.Host, userName, "ok", nil)
+				opts.logEvent("exec", out.Alias, out.Host, out.UserName, "ok", nil)
 			}
 			return execErr
 		},
@@ -87,6 +97,18 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
+}
+
+type execIdentityResolver struct{}
+
+func (execIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+	return resolveHostIdentity(cfg, host)
+}
+
+type execRemoteRunner struct{}
+
+func (execRemoteRunner) ExecRemote(_ context.Context, req execapp.RemoteRequest) error {
+	return executeRemoteCmd(req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
