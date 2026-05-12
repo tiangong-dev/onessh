@@ -80,6 +80,41 @@ func TestServiceUpdateHostAppliesTagsAndEnv(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateHostAppliesHooks(t *testing.T) {
+	t.Parallel()
+
+	service := Service{}
+	cfg := store.NewPlainConfig()
+	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["prod"] = store.HostConfig{
+		Host:        "prod.example.com",
+		UserRef:     "alice",
+		PreConnect:  []string{"legacy pre"},
+		PostConnect: []string{"legacy post"},
+	}
+
+	out, err := service.Update(UpdateInput{
+		Config:             cfg,
+		Alias:              "prod",
+		PreConnect:         []string{" cd /srv/app "},
+		PreConnectChanged:  true,
+		ClearPostConnect:   true,
+		PostConnectChanged: true,
+		PostConnect:        []string{" echo done "},
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got := out.Config.Hosts["prod"]
+	if !reflect.DeepEqual(got.PreConnect, []string{"cd /srv/app"}) {
+		t.Fatalf("PreConnect = %#v", got.PreConnect)
+	}
+	if !reflect.DeepEqual(got.PostConnect, []string{"echo done"}) {
+		t.Fatalf("PostConnect = %#v", got.PostConnect)
+	}
+}
+
 func TestServiceUpdateHostRejectsInvalidEnv(t *testing.T) {
 	t.Parallel()
 

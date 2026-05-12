@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	appusers "onessh/internal/app/users"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -207,16 +208,28 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			cfg.Users[alias] = store.UserConfig{
-				Name: strings.TrimSpace(userName),
-				Auth: auth,
+			added, err := appusers.Service{}.Add(appusers.AddInput{
+				Config: cfg,
+				Alias:  alias,
+				Name:   userName,
+				Auth: appusers.AuthInput{
+					Type:     auth.Type,
+					KeyPath:  auth.KeyPath,
+					Password: auth.Password,
+				},
+			})
+			if err != nil {
+				return err
 			}
+			cfg = added.Config
+			alias = added.Alias
+			userCfg := added.User
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
 
-			opts.logEvent("add_user", alias, "", cfg.Users[alias].Name, "ok", nil)
-			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s added (%s)\n", alias, cfg.Users[alias].Name)
+			opts.logEvent("add_user", alias, "", userCfg.Name, "ok", nil)
+			fmt.Fprintf(cmd.OutOrStdout(), "✔ user profile %s added (%s)\n", alias, userCfg.Name)
 			return nil
 		},
 	}
@@ -263,8 +276,11 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 				return fmt.Errorf("user profile %q does not exist", alias)
 			}
 
+			nameChanged := false
+			authChanged := false
 			if strings.TrimSpace(name) != "" {
 				userCfg.Name = strings.TrimSpace(name)
+				nameChanged = true
 			}
 
 			authType = normalizeAuthType(authType)
@@ -273,19 +289,38 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				authChanged = true
 			} else if strings.TrimSpace(name) == "" {
 				reader := bufio.NewReader(os.Stdin)
 				userCfg.Name, err = promptNonEmpty(reader, "User", userCfg.Name)
 				if err != nil {
 					return err
 				}
+				nameChanged = true
 				userCfg.Auth, err = promptAuthConfig(reader, &userCfg.Auth)
 				if err != nil {
 					return err
 				}
+				authChanged = true
 			}
 
-			cfg.Users[alias] = userCfg
+			updateInput := appusers.UpdateInput{
+				Config: cfg,
+				Alias:  alias,
+			}
+			if nameChanged {
+				updateInput.Name = userCfg.Name
+				updateInput.NameChanged = true
+			}
+			if authChanged {
+				updateInput.Auth = authUpdateFromConfig(userCfg.Auth)
+			}
+			updated, err := appusers.Service{}.Update(updateInput)
+			if err != nil {
+				return err
+			}
+			cfg = updated.Config
+			userCfg = updated.User
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}
@@ -325,16 +360,17 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 			}
 			defer wipe(pass)
 
-			if _, exists := cfg.Users[alias]; !exists {
-				return fmt.Errorf("user profile %q does not exist", alias)
+			removed, err := appusers.Service{}.Remove(appusers.RemoveInput{
+				Config: cfg,
+				Alias:  alias,
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), " is used by host(s): ") && !strings.Contains(err.Error(), "Please remove these hosts first") {
+					return fmt.Errorf("%s. Please remove these hosts first", err.Error())
+				}
+				return err
 			}
-
-			inUseBy := hostAliasesUsingUser(cfg, alias)
-			if len(inUseBy) > 0 {
-				return fmt.Errorf("user profile %q is used by host(s): %s. Please remove these hosts first", alias, strings.Join(inUseBy, ", "))
-			}
-
-			delete(cfg.Users, alias)
+			cfg = removed.Config
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
 			}

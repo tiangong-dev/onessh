@@ -47,6 +47,15 @@ type UpdateInput struct {
 
 	ClearEnv bool
 
+	PreConnect        []string
+	PreConnectChanged bool
+
+	PostConnect        []string
+	PostConnectChanged bool
+
+	ClearPreConnect  bool
+	ClearPostConnect bool
+
 	Tags        []string
 	TagsChanged bool
 
@@ -128,6 +137,9 @@ func (Service) Update(input UpdateInput) (Output, error) {
 		host.UserRef = domain.NormalizeUserAlias(input.UserRef)
 	}
 	if err := applyEnvUpdate(&host, input); err != nil {
+		return Output{}, err
+	}
+	if err := applyHookUpdate(&host, input); err != nil {
 		return Output{}, err
 	}
 	applyTagUpdate(&host, input)
@@ -227,6 +239,40 @@ func applyEnvUpdate(host *store.HostConfig, input UpdateInput) error {
 	return nil
 }
 
+func applyHookUpdate(host *store.HostConfig, input UpdateInput) error {
+	if !input.PreConnectChanged && !input.PostConnectChanged && !input.ClearPreConnect && !input.ClearPostConnect {
+		return nil
+	}
+
+	preparedPre := cloneStringSlice(host.PreConnect)
+	preparedPost := cloneStringSlice(host.PostConnect)
+
+	if input.ClearPreConnect {
+		preparedPre = nil
+	}
+	if input.ClearPostConnect {
+		preparedPost = nil
+	}
+	if input.PreConnectChanged {
+		commands, err := normalizeHookCommands(input.PreConnect, "pre-connect")
+		if err != nil {
+			return err
+		}
+		preparedPre = commands
+	}
+	if input.PostConnectChanged {
+		commands, err := normalizeHookCommands(input.PostConnect, "post-connect")
+		if err != nil {
+			return err
+		}
+		preparedPost = commands
+	}
+
+	host.PreConnect = preparedPre
+	host.PostConnect = preparedPost
+	return nil
+}
+
 func applyTagUpdate(host *store.HostConfig, input UpdateInput) {
 	if !input.TagsChanged && !input.UntagChanged && !input.ClearTags {
 		return
@@ -270,6 +316,21 @@ func normalizeEnvMap(values map[string]string) (map[string]string, error) {
 		normalized[trimmedKey] = value
 	}
 	return normalized, nil
+}
+
+func normalizeHookCommands(values []string, flagName string) ([]string, error) {
+	commands := make([]string, 0, len(values))
+	for i, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return nil, fmt.Errorf("%s command at index %d is empty", flagName, i)
+		}
+		commands = append(commands, trimmed)
+	}
+	if len(commands) == 0 {
+		return nil, nil
+	}
+	return commands, nil
 }
 
 func normalizeHostAlias(input string) string {
