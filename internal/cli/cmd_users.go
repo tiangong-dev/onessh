@@ -416,7 +416,7 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 				}
 				if err := clearPassphraseCacheByPrefix(
 					socketPath,
-					passphraseCacheKeyPrefixV1,
+					cacheKeyNamespaceV1,
 					resolveAgentCapability(opts.agentCapability),
 				); err != nil {
 					return fmt.Errorf("clear cached passphrases: %w", err)

@@ -115,6 +115,7 @@ func startPassphraseAgentProcess(socketPath, capability string) error {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
 
+	// #nosec G204 -- exePath is the current onessh executable resolved by os.Executable.
 	cmd := exec.Command(exePath, "agent", "serve", "--socket", socketPath)
 	cmd.Stdin = nil
 	cmd.Stdout = nil

@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	defaultCacheTTL            = 10 * time.Minute
-	passphraseCacheKeyPrefixV1 = "onessh:passphrase:v1:"
-	onesshAgentCapabilityEnv   = "ONESSH_AGENT_CAPABILITY"
+	defaultCacheTTL = 10 * time.Minute
+	// #nosec G101 -- this is a public cache-key namespace, not secret material.
+	cacheKeyNamespaceV1      = "onessh:passphrase:v1:"
+	onesshAgentCapabilityEnv = "ONESSH_AGENT_CAPABILITY"
 )
 
 type passphraseStore interface {
@@ -106,5 +107,5 @@ func canonicalCacheKey(dataPath string) string {
 }
 
 func passphraseCacheKey(dataPath string) string {
-	return passphraseCacheKeyPrefixV1 + canonicalCacheKey(dataPath)
+	return cacheKeyNamespaceV1 + canonicalCacheKey(dataPath)
 }

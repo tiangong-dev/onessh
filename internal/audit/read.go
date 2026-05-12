@@ -96,6 +96,7 @@ func discoverLogFiles(logPath string) ([]string, error) {
 }
 
 func readLogFile(path, action, alias string, out *[]Event) error {
+	// #nosec G304 -- path is produced by audit log discovery under the configured data directory.
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

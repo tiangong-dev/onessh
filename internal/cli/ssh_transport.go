@@ -58,11 +58,22 @@ func buildProxyJumpArgs(cfg store.PlainConfig, proxyJump string) ([]string, erro
 		if err != nil {
 			return nil, fmt.Errorf("resolve onessh path for proxy: %w", err)
 		}
-		proxyCmd := fmt.Sprintf("%s -q %s -- -W %%h:%%p", exePath, proxyJump)
+		proxyCmd := buildOnesshProxyCommand(exePath, proxyJump)
 		return []string{"-o", "ProxyCommand=" + proxyCmd}, nil
 	default:
 		return nil, fmt.Errorf("jump host %q has unsupported auth type %q", proxyJump, jumpUser.Auth.Type)
 	}
+}
+
+func buildOnesshProxyCommand(exePath, proxyJump string) string {
+	return strings.Join([]string{
+		shellSingleQuote(exePath),
+		"-q",
+		shellSingleQuote(proxyJump),
+		"--",
+		"-W",
+		shellSingleQuote("%h:%p"),
+	}, " ")
 }
 
 func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostConfig, portFlag string) ([]string, error) {
@@ -173,7 +184,20 @@ func withPasswordAuth(binary string, args []string, auth store.AuthConfig, env [
 }
 
 func runExternalCommand(binary string, args []string, env []string, extraFiles []*os.File, stdin io.Reader, stdout, stderr io.Writer) error {
-	cmd := exec.Command(binary, args...)
+	var cmd *exec.Cmd
+	switch binary {
+	case "ssh":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
+		cmd = exec.Command("ssh", args...)
+	case "scp":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
+		cmd = exec.Command("scp", args...)
+	case "sshpass":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
+		cmd = exec.Command("sshpass", args...)
+	default:
+		return fmt.Errorf("unsupported external command: %s", binary)
+	}
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

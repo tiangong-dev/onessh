@@ -58,7 +58,7 @@ func (r Repository) loadMetaAndKey(passphrase []byte, createIfMissing bool) (met
 	key := deriveKey(passphrase, salt, meta.KDF.Time, meta.KDF.Memory, meta.KDF.Threads, meta.KDF.KeyLen)
 
 	check, err := decryptStringField(meta.Check, key)
-	if err != nil || check != passwordCheckText {
+	if err != nil || check != storeVerifierPlaintext {
 		zeroBytes(key)
 		return metadataDoc{}, nil, ErrInvalidPassword
 	}
@@ -98,7 +98,7 @@ func (r Repository) createMeta(passphrase []byte) (metadataDoc, []byte, error) {
 	params := defaultKDFParams(salt)
 	key := deriveKey(passphrase, salt, params.Time, params.Memory, params.Threads, params.KeyLen)
 
-	check, err := encryptStringField(passwordCheckText, key)
+	check, err := encryptStringField(storeVerifierPlaintext, key)
 	if err != nil {
 		zeroBytes(key)
 		return metadataDoc{}, nil, fmt.Errorf("encrypt password verifier: %w", err)

@@ -21,6 +21,7 @@ func DefaultSettings() Settings {
 // LoadSettings loads persisted audit settings.
 func LoadSettings(dataPath string) (Settings, error) {
 	path := resolveSettingsPath(dataPath)
+	// #nosec G304 -- dataPath is the user-selected OneSSH data directory.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
