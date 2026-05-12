@@ -103,6 +103,16 @@ func (r Repository) Load(passphrase []byte) (PlainConfig, error) {
 }
 
 func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
+	lock, err := acquireRepositoryWriteLock(r.Path)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
+	return r.saveWithoutLock(cfg, passphrase)
+}
+
+func (r Repository) saveWithoutLock(cfg PlainConfig, passphrase []byte) error {
 	if cfg.Hosts == nil {
 		cfg.Hosts = map[string]HostConfig{}
 	}
@@ -134,6 +144,11 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	if err := validateResetPath(r.Path); err != nil {
 		return err
 	}
+	lock, err := acquireRepositoryWriteLock(r.Path)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 
 	stagedPath, cleanupStaged, err := prepareSwapTempDir(r.Path, "stage")
 	if err != nil {
@@ -142,7 +157,7 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	defer cleanupStaged()
 
 	stagedRepo := Repository{Path: stagedPath}
-	if err := stagedRepo.Save(cfg, passphrase); err != nil {
+	if err := stagedRepo.saveWithoutLock(cfg, passphrase); err != nil {
 		return err
 	}
 
