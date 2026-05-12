@@ -140,10 +140,10 @@ func TestCanonicalCacheKeyNormalizesPathVariants(t *testing.T) {
 
 func TestPassphraseCacheKeyAddsNamespacePrefix(t *testing.T) {
 	key := passphraseCacheKey("/tmp/onessh-store")
-	if !strings.HasPrefix(key, passphraseCacheKeyPrefixV1) {
+	if !strings.HasPrefix(key, cacheKeyNamespaceV1) {
 		t.Fatalf("expected namespaced cache key prefix, got %q", key)
 	}
-	if key == passphraseCacheKeyPrefixV1 {
+	if key == cacheKeyNamespaceV1 {
 		t.Fatalf("expected non-empty canonical component in key")
 	}
 }

@@ -186,7 +186,7 @@ func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string,
 		clearToken()
 		return nil, nil, fmt.Errorf("close askpass launcher: %w", err)
 	}
-	if err := os.Chmod(scriptPath, 0o700); err != nil {
+	if err := os.Chmod(scriptPath, 0o500); err != nil {
 		_ = os.Remove(scriptPath)
 		clearToken()
 		return nil, nil, fmt.Errorf("chmod askpass launcher: %w", err)

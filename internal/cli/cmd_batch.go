@@ -71,10 +71,16 @@ func printBatchResults(out, errOut io.Writer, aliases []string, results []batchR
 		if len(r.stdout) > 0 || len(r.stderr) > 0 {
 			fmt.Fprintf(out, "=== %s ===\n", alias)
 			if len(r.stdout) > 0 {
-				out.Write(r.stdout)
+				if _, err := out.Write(r.stdout); err != nil {
+					fmt.Fprintf(errOut, "write stdout for %s: %v\n", alias, err)
+					anyFailed = true
+				}
 			}
 			if len(r.stderr) > 0 {
-				errOut.Write(r.stderr)
+				if _, err := errOut.Write(r.stderr); err != nil {
+					fmt.Fprintf(errOut, "write stderr for %s: %v\n", alias, err)
+					anyFailed = true
+				}
 			}
 		}
 		if r.err != nil {

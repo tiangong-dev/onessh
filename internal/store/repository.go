@@ -14,10 +14,10 @@ var (
 )
 
 const (
-	metaFileName      = "meta.yaml"
-	usersDirName      = "users"
-	hostsDirName      = "hosts"
-	passwordCheckText = "onessh-store-check"
+	metaFileName           = "meta.yaml"
+	usersDirName           = "users"
+	hostsDirName           = "hosts"
+	storeVerifierPlaintext = "onessh-store-check"
 
 	kdfMinTime        uint32 = 1
 	kdfMaxTime        uint32 = 10

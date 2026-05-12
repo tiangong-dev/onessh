@@ -2,6 +2,7 @@ package cli
 
 import (
 	"io"
+	"strings"
 	"testing"
 
 	"onessh/internal/store"
@@ -57,5 +58,24 @@ func TestNewPasswordFD(t *testing.T) {
 	}
 	if string(raw) != "hello-pass\n" {
 		t.Fatalf("unexpected password payload: %q", string(raw))
+	}
+}
+
+func TestBuildOnesshProxyCommandShellQuotesDynamicValues(t *testing.T) {
+	t.Parallel()
+
+	got := buildOnesshProxyCommand("/tmp/one ssh/onessh'bin", "jump'; touch /tmp/pwn; echo '")
+	want := `'/tmp/one ssh/onessh'"'"'bin' -q 'jump'"'"'; touch /tmp/pwn; echo '"'"'' -- -W '%h:%p'`
+	if got != want {
+		t.Fatalf("unexpected proxy command:\nwant: %s\n got: %s", want, got)
+	}
+}
+
+func TestRunExternalCommandRejectsUnsupportedBinary(t *testing.T) {
+	t.Parallel()
+
+	err := runExternalCommand("sh", []string{"-c", "true"}, nil, nil, nil, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "unsupported external command") {
+		t.Fatalf("expected unsupported command error, got %v", err)
 	}
 }
