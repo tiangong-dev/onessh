@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	copyapp "onessh/internal/app/copy"
+	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -115,19 +118,29 @@ Use alias:path to specify a remote path:
 				isUpload = true
 			}
 
-			target, exists := cfg.Hosts[alias]
-			if !exists {
-				return fmt.Errorf("host %q not found", alias)
+			service := copyapp.Service{
+				IdentityResolver: copyIdentityResolver{},
+				Runner:           copyRunner{},
 			}
-			userName, auth, err := resolveHostIdentity(cfg, target)
-			if err != nil {
-				return err
-			}
-			cpErr := executeSCP(cfg, target, userName, auth, remotePath, localPaths, isUpload, recursive, opts.agentSocket, opts.agentCapability, nil, nil)
+			out, cpErr := service.Copy(cmd.Context(), copyapp.Input{
+				Config:     cfg,
+				Alias:      alias,
+				RemotePath: remotePath,
+				LocalPaths: localPaths,
+				IsUpload:   isUpload,
+				Recursive:  recursive,
+				Agent: copyapp.AgentConfig{
+					Socket:     opts.agentSocket,
+					Capability: opts.agentCapability,
+				},
+				IO: appruntime.IOStreams{},
+			})
 			if cpErr != nil {
-				opts.logEvent("cp", alias, target.Host, userName, "fail", cpErr)
+				if out.Host != "" {
+					opts.logEvent("cp", out.Alias, out.Host, out.UserName, "fail", cpErr)
+				}
 			} else {
-				opts.logEvent("cp", alias, target.Host, userName, "ok", nil)
+				opts.logEvent("cp", out.Alias, out.Host, out.UserName, "ok", nil)
 			}
 			return cpErr
 		},
@@ -148,6 +161,18 @@ Use alias:path to specify a remote path:
 		return aliases, cobra.ShellCompDirectiveNoSpace
 	}
 	return cmd
+}
+
+type copyIdentityResolver struct{}
+
+func (copyIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+	return resolveHostIdentity(cfg, host)
+}
+
+type copyRunner struct{}
+
+func (copyRunner) CopyRemote(_ context.Context, req copyapp.Request) error {
+	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 func parseCpArgs(src, dst string) (alias, remotePath string, isUpload bool, err error) {
