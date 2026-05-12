@@ -3,10 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	copyapp "onessh/internal/app/copy"
@@ -91,7 +89,10 @@ Use alias:path to specify a remote path:
 				_, _, srcRemote := splitCpArg(args[0])
 				_, _, dstRemote := splitCpArg(args[1])
 				if srcRemote && dstRemote {
-					return executeRemoteToRemoteCopy(cfg, args[0], args[1], recursive, opts.agentSocket, opts.agentCapability)
+					return executeRemoteToRemoteCopy(cmd.Context(), cfg, args[0], args[1], recursive, opts.agentSocket, opts.agentCapability, appruntime.IOStreams{
+						Out:    cmd.OutOrStdout(),
+						ErrOut: cmd.ErrOrStderr(),
+					})
 				}
 
 				alias, remotePath, isUpload, err = parseCpArgs(args[0], args[1])
@@ -171,6 +172,12 @@ func (copyRunner) CopyRemote(_ context.Context, req copyapp.Request) error {
 	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
+type remoteToRemoteCopyRunner struct{}
+
+func (remoteToRemoteCopyRunner) CopyRemote(_ context.Context, req copyapp.RemoteTransferRequest) error {
+	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+}
+
 func parseCpArgs(src, dst string) (alias, remotePath string, isUpload bool, err error) {
 	srcAlias, srcPath, srcHasAlias := splitCpArg(src)
 	dstAlias, dstPath, dstHasAlias := splitCpArg(dst)
@@ -195,60 +202,29 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 	return arg[:idx], arg[idx+1:], true
 }
 
-func executeRemoteToRemoteCopy(cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string) error {
+func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string, ioStreams appruntime.IOStreams) error {
 	srcAlias, srcPath, _ := splitCpArg(srcArg)
 	dstAlias, dstPath, _ := splitCpArg(dstArg)
 
-	srcHost, ok := cfg.Hosts[srcAlias]
-	if !ok {
-		return fmt.Errorf("host %q not found", srcAlias)
+	service := copyapp.RemoteToRemoteService{
+		IdentityResolver: copyIdentityResolver{},
+		Runner:           remoteToRemoteCopyRunner{},
+		TempFS:           copyapp.OSTempFilesystem{},
 	}
-	dstHost, ok := cfg.Hosts[dstAlias]
-	if !ok {
-		return fmt.Errorf("host %q not found", dstAlias)
-	}
-
-	srcUser, srcAuth, err := resolveHostIdentity(cfg, srcHost)
-	if err != nil {
-		return fmt.Errorf("resolve source host identity: %w", err)
-	}
-	dstUser, dstAuth, err := resolveHostIdentity(cfg, dstHost)
-	if err != nil {
-		return fmt.Errorf("resolve destination host identity: %w", err)
-	}
-
-	tmpDir, err := os.MkdirTemp("", "onessh-cp-*")
-	if err != nil {
-		return fmt.Errorf("create temp directory: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Step 1: download from source to temp dir
-	fmt.Fprintf(os.Stderr, "Downloading from %s (%s) ...\n", srcAlias, srcHost.Host)
-	if err := executeSCP(cfg, srcHost, srcUser, srcAuth, srcPath, []string{tmpDir + "/"}, false, recursive, agentSocket, agentCapability, nil, nil); err != nil {
-		return fmt.Errorf("download from %s failed: %w", srcAlias, err)
-	}
-
-	// Collect downloaded files
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		return fmt.Errorf("read temp directory: %w", err)
-	}
-	if len(entries) == 0 {
-		return errors.New("no files were downloaded from source")
-	}
-	var localPaths []string
-	for _, e := range entries {
-		localPaths = append(localPaths, filepath.Join(tmpDir, e.Name()))
-	}
-
-	// Step 2: upload from temp to destination
-	fmt.Fprintf(os.Stderr, "Uploading to %s (%s) ...\n", dstAlias, dstHost.Host)
-	if err := executeSCP(cfg, dstHost, dstUser, dstAuth, dstPath, localPaths, true, recursive, agentSocket, agentCapability, nil, nil); err != nil {
-		return fmt.Errorf("upload to %s failed: %w", dstAlias, err)
-	}
-
-	return nil
+	_, err := service.Copy(ctx, copyapp.RemoteToRemoteInput{
+		Config:           cfg,
+		SourceAlias:      srcAlias,
+		SourcePath:       srcPath,
+		DestinationAlias: dstAlias,
+		DestinationPath:  dstPath,
+		Recursive:        recursive,
+		Agent: copyapp.AgentConfig{
+			Socket:     agentSocket,
+			Capability: agentCapability,
+		},
+		IO: ioStreams,
+	})
+	return err
 }
 
 func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
