@@ -187,10 +187,13 @@ func runExternalCommand(binary string, args []string, env []string, extraFiles [
 	var cmd *exec.Cmd
 	switch binary {
 	case "ssh":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
 		cmd = exec.Command("ssh", args...)
 	case "scp":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
 		cmd = exec.Command("scp", args...)
 	case "sshpass":
+		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
 		cmd = exec.Command("sshpass", args...)
 	default:
 		return fmt.Errorf("unsupported external command: %s", binary)

@@ -186,6 +186,7 @@ func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string,
 		clearToken()
 		return nil, nil, fmt.Errorf("close askpass launcher: %w", err)
 	}
+	// #nosec G302 -- SSH_ASKPASS helper must be owner-executable.
 	if err := os.Chmod(scriptPath, 0o500); err != nil {
 		_ = os.Remove(scriptPath)
 		clearToken()
