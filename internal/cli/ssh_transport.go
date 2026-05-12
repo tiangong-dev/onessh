@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 
 	infrassh "onessh/internal/infra/ssh"
 	"onessh/internal/store"
@@ -44,26 +42,24 @@ func sshArgsOptions() infrassh.ArgsOptions {
 }
 
 func withPasswordAuth(binary string, args []string, auth store.AuthConfig, env []string, agentSocket, agentCapability string, errOut io.Writer, baseBinary string) (string, []string, []string, []*os.File, func(), error) {
-	if strings.ToLower(auth.Type) != "password" || auth.Password == "" {
-		return binary, args, env, nil, func() {}, nil
-	}
-
-	if _, err := exec.LookPath("sshpass"); err == nil {
-		fd, cleanup, err := newPasswordFD(auth.Password)
-		if err != nil {
-			return "", nil, nil, nil, nil, err
-		}
-		return "sshpass", append([]string{"-d", "3", baseBinary}, args...), env, []*os.File{fd}, cleanup, nil
-	}
-
-	if errOut != nil {
-		fmt.Fprintln(errOut, "sshpass not found; using weaker SSH_ASKPASS fallback with a short-lived single-use agent token.")
-	}
-	askPassEnv, cleanup, err := prepareAskPassEnv(agentSocket, agentCapability, auth.Password)
+	result, err := infrassh.PasswordAuthStrategy{
+		LookPath:          exec.LookPath,
+		NewPasswordFD:     newPasswordFD,
+		PrepareAskPassEnv: prepareAskPassEnv,
+		WarningWriter:     errOut,
+	}.ApplyPasswordAuth(infrassh.PasswordAuthRequest{
+		Binary:          binary,
+		Args:            args,
+		Auth:            auth,
+		Env:             env,
+		AgentSocket:     agentSocket,
+		AgentCapability: agentCapability,
+		BaseBinary:      baseBinary,
+	})
 	if err != nil {
 		return "", nil, nil, nil, nil, err
 	}
-	return binary, args, append(env, askPassEnv...), nil, cleanup, nil
+	return result.Binary, result.Args, result.Env, result.ExtraFiles, result.Cleanup, nil
 }
 
 func runExternalCommand(binary string, args []string, env []string, extraFiles []*os.File, stdin io.Reader, stdout, stderr io.Writer) error {

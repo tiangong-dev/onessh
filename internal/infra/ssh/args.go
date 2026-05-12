@@ -27,52 +27,6 @@ func Destination(host store.HostConfig, userName string) string {
 	return destination
 }
 
-// BuildProxyJumpArgs resolves the ProxyJump value into SSH arguments.
-func BuildProxyJumpArgs(cfg store.PlainConfig, proxyJump string, opts ArgsOptions) ([]string, error) {
-	if proxyJump == "" {
-		return nil, nil
-	}
-
-	jumpHostCfg, isAlias := cfg.Hosts[proxyJump]
-	if !isAlias {
-		return []string{"-J", proxyJump}, nil
-	}
-
-	jumpUser, ok := cfg.Users[jumpHostCfg.UserRef]
-	if !ok {
-		return nil, fmt.Errorf("jump host alias %q references unknown user profile %q", proxyJump, jumpHostCfg.UserRef)
-	}
-
-	port := domain.EffectivePort(jumpHostCfg.Port)
-
-	switch domain.NormalizeAuthType(jumpUser.Auth.Type) {
-	case domain.AuthTypeKey:
-		dest := fmt.Sprintf("%s@%s:%d", jumpUser.Name, jumpHostCfg.Host, port)
-		return []string{"-J", dest}, nil
-	case domain.AuthTypePassword:
-		exePath, err := opts.resolveOnesshPath()
-		if err != nil {
-			return nil, fmt.Errorf("resolve onessh path for proxy: %w", err)
-		}
-		proxyCmd := BuildOnesshProxyCommand(exePath, proxyJump)
-		return []string{"-o", "ProxyCommand=" + proxyCmd}, nil
-	default:
-		return nil, fmt.Errorf("jump host %q has unsupported auth type %q", proxyJump, jumpUser.Auth.Type)
-	}
-}
-
-// BuildOnesshProxyCommand builds the shell command used for password-auth jump hosts.
-func BuildOnesshProxyCommand(exePath, proxyJump string) string {
-	return strings.Join([]string{
-		shellSingleQuote(exePath),
-		"-q",
-		shellSingleQuote(proxyJump),
-		"--",
-		"-W",
-		shellSingleQuote("%h:%p"),
-	}, " ")
-}
-
 // BuildSSHFlags builds the SSH option flags without the destination.
 func BuildSSHFlags(cfg store.PlainConfig, host store.HostConfig, auth store.AuthConfig, extra []string, opts ArgsOptions) ([]string, error) {
 	args, err := applySSHCommonArgs(nil, cfg, host, "-p", opts)
@@ -198,8 +152,4 @@ func expandTilde(input string) (string, error) {
 		return homeDir + "/" + strings.TrimPrefix(input, "~/"), nil
 	}
 	return input, nil
-}
-
-func shellSingleQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
