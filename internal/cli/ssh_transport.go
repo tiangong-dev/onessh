@@ -5,154 +5,42 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 
-	"onessh/internal/domain"
+	infrassh "onessh/internal/infra/ssh"
 	"onessh/internal/store"
 )
 
 func sshDestination(host store.HostConfig, userName string) string {
-	destination := host.Host
-	if userName != "" {
-		destination = fmt.Sprintf("%s@%s", userName, host.Host)
-	}
-	return destination
+	return infrassh.Destination(host, userName)
 }
 
-// buildProxyJumpArgs resolves the ProxyJump value into SSH arguments.
-// If proxyJump matches an alias in cfg.Hosts, the alias is expanded automatically:
-//   - key auth: resolves to -J user@host:port
-//   - password auth: resolves to -o ProxyCommand using the onessh binary itself
-//
-// If proxyJump does not match any alias, it is treated as a raw SSH jump spec (user@host:port).
 func buildProxyJumpArgs(cfg store.PlainConfig, proxyJump string) ([]string, error) {
-	if proxyJump == "" {
-		return nil, nil
-	}
-
-	jumpHostCfg, isAlias := cfg.Hosts[proxyJump]
-	if !isAlias {
-		// Raw spec (e.g. "user@jumphost:22") — pass through unchanged.
-		return []string{"-J", proxyJump}, nil
-	}
-
-	jumpUser, ok := cfg.Users[jumpHostCfg.UserRef]
-	if !ok {
-		return nil, fmt.Errorf("jump host alias %q references unknown user profile %q", proxyJump, jumpHostCfg.UserRef)
-	}
-
-	port := domain.EffectivePort(jumpHostCfg.Port)
-
-	switch domain.NormalizeAuthType(jumpUser.Auth.Type) {
-	case domain.AuthTypeKey:
-		dest := fmt.Sprintf("%s@%s:%d", jumpUser.Name, jumpHostCfg.Host, port)
-		return []string{"-J", dest}, nil
-	case domain.AuthTypePassword:
-		// Run onessh itself as the ProxyCommand so it can handle password auth
-		// using the existing passcache agent. The subprocess inherits the current
-		// environment (agent socket, data directory, etc.).
-		exePath, err := os.Executable()
-		if err != nil {
-			return nil, fmt.Errorf("resolve onessh path for proxy: %w", err)
-		}
-		proxyCmd := buildOnesshProxyCommand(exePath, proxyJump)
-		return []string{"-o", "ProxyCommand=" + proxyCmd}, nil
-	default:
-		return nil, fmt.Errorf("jump host %q has unsupported auth type %q", proxyJump, jumpUser.Auth.Type)
-	}
+	return infrassh.BuildProxyJumpArgs(cfg, proxyJump, sshArgsOptions())
 }
 
 func buildOnesshProxyCommand(exePath, proxyJump string) string {
-	return strings.Join([]string{
-		shellSingleQuote(exePath),
-		"-q",
-		shellSingleQuote(proxyJump),
-		"--",
-		"-W",
-		shellSingleQuote("%h:%p"),
-	}, " ")
-}
-
-func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostConfig, portFlag string) ([]string, error) {
-	port := domain.EffectivePort(host.Port)
-	args = append(args, portFlag, strconv.Itoa(port))
-	if host.ProxyJump != "" {
-		proxyArgs, err := buildProxyJumpArgs(cfg, host.ProxyJump)
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, proxyArgs...)
-	}
-	return args, nil
-}
-
-func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
-	switch domain.NormalizeAuthType(auth.Type) {
-	case domain.AuthTypeKey:
-		if auth.KeyPath == "" {
-			return args, nil
-		}
-		keyPath, err := expandTilde(auth.KeyPath)
-		if err != nil {
-			return nil, err
-		}
-		return append(args, "-i", keyPath), nil
-	case domain.AuthTypePassword:
-		return args, nil
-	default:
-		return nil, fmt.Errorf("unsupported auth type: %s", auth.Type)
-	}
+	return infrassh.BuildOnesshProxyCommand(exePath, proxyJump)
 }
 
 // buildSSHFlags builds the SSH option flags (port, proxy, identity, extras) without the destination.
 // Use this when you need to insert additional flags or the remote command after building.
 func buildSSHFlags(cfg store.PlainConfig, host store.HostConfig, auth store.AuthConfig, extra []string) ([]string, error) {
-	args, err := applySSHCommonArgs(nil, cfg, host, "-p")
-	if err != nil {
-		return nil, err
-	}
-	args = appendSendEnvOptions(args, host.Env)
-	args, err = applyKeyAuthArg(args, auth)
-	if err != nil {
-		return nil, err
-	}
-	args = append(args, extra...)
-	return args, nil
+	return infrassh.BuildSSHFlags(cfg, host, auth, extra, sshArgsOptions())
 }
 
 // buildSSHArgs builds the full SSH argument list including the destination.
 // Any extra flags are inserted before the destination.
 func buildSSHArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, extra []string) ([]string, error) {
-	args, err := buildSSHFlags(cfg, host, auth, extra)
-	if err != nil {
-		return nil, err
-	}
-	args = append(args, sshDestination(host, userName))
-	return args, nil
+	return infrassh.BuildSSHArgs(cfg, host, userName, auth, extra, sshArgsOptions())
 }
 
 func buildSCPArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool) ([]string, error) {
-	args, err := applySSHCommonArgs(nil, cfg, host, "-P")
-	if err != nil {
-		return nil, err
-	}
-	if recursive {
-		args = append(args, "-r")
-	}
-	args, err = applyKeyAuthArg(args, auth)
-	if err != nil {
-		return nil, err
-	}
+	return infrassh.BuildSCPArgs(cfg, host, userName, auth, remotePath, localPaths, isUpload, recursive, sshArgsOptions())
+}
 
-	remote := sshDestination(host, userName) + ":" + remotePath
-	if isUpload {
-		args = append(args, localPaths...)
-		args = append(args, remote)
-		return args, nil
-	}
-	args = append(args, remote, localPaths[0])
-	return args, nil
+func sshArgsOptions() infrassh.ArgsOptions {
+	return infrassh.ArgsOptions{ResolveOnesshPath: os.Executable}
 }
 
 func withPasswordAuth(binary string, args []string, auth store.AuthConfig, env []string, agentSocket, agentCapability string, errOut io.Writer, baseBinary string) (string, []string, []string, []*os.File, func(), error) {
@@ -179,26 +67,5 @@ func withPasswordAuth(binary string, args []string, auth store.AuthConfig, env [
 }
 
 func runExternalCommand(binary string, args []string, env []string, extraFiles []*os.File, stdin io.Reader, stdout, stderr io.Writer) error {
-	var cmd *exec.Cmd
-	switch binary {
-	case "ssh":
-		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
-		cmd = exec.Command("ssh", args...)
-	case "scp":
-		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
-		cmd = exec.Command("scp", args...)
-	case "sshpass":
-		// #nosec G204 -- command is fixed; args are passed as argv without a shell.
-		cmd = exec.Command("sshpass", args...)
-	default:
-		return fmt.Errorf("unsupported external command: %s", binary)
-	}
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	cmd.Env = env
-	if len(extraFiles) > 0 {
-		cmd.ExtraFiles = extraFiles
-	}
-	return cmd.Run()
+	return infrassh.RunExternalCommand(binary, args, env, extraFiles, stdin, stdout, stderr)
 }
