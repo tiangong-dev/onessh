@@ -59,11 +59,11 @@ func TestResolveAgentCapability(t *testing.T) {
 	derived := DeriveAgentCapability("session-a")
 
 	cases := []struct {
-		name       string
-		explicit   string
-		env        string
-		sessionID  string
-		want       string
+		name      string
+		explicit  string
+		env       string
+		sessionID string
+		want      string
 	}{
 		{name: "explicit wins", explicit: " explicit ", env: "env", sessionID: "session-a", want: "explicit"},
 		{name: "env fallback", env: " env ", sessionID: "session-a", want: "env"},

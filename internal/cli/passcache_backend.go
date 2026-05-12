@@ -1,18 +1,18 @@
 package cli
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	appruntime "onessh/internal/runtime"
 )
 
 const (
-	defaultCacheTTL = 10 * time.Minute
+	defaultCacheTTL = appruntime.DefaultCacheTTL
 	// #nosec G101 -- this is a public cache-key namespace, not secret material.
 	cacheKeyNamespaceV1      = "onessh:passphrase:v1:"
 	onesshAgentCapabilityEnv = "ONESSH_AGENT_CAPABILITY"
@@ -40,14 +40,7 @@ func defaultAgentCapabilityFlagValue() string {
 }
 
 func resolveAgentCapability(explicit string) string {
-	if raw := strings.TrimSpace(explicit); raw != "" {
-		return raw
-	}
-	if fromEnv := defaultAgentCapabilityFlagValue(); fromEnv != "" {
-		return fromEnv
-	}
-	// Auto-derive a stable per-shell-session capability.
-	return deriveSessionCapability(defaultAgentSessionID())
+	return appruntime.ResolveAgentCapability(explicit, defaultAgentCapabilityFlagValue(), defaultAgentSessionID())
 }
 
 func defaultAgentSessionID() string {
@@ -55,8 +48,7 @@ func defaultAgentSessionID() string {
 }
 
 func deriveSessionCapability(sessionID string) string {
-	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + sessionID))
-	return hex.EncodeToString(sum[:])
+	return appruntime.DeriveAgentCapability(sessionID)
 }
 
 func defaultAgentSocketPath() (string, error) {
@@ -82,10 +74,7 @@ func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) 
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {
-	if ttl <= 0 {
-		return defaultCacheTTL
-	}
-	return ttl
+	return appruntime.NormalizeCacheTTL(ttl)
 }
 
 func canonicalCacheKey(dataPath string) string {

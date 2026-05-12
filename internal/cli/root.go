@@ -1,15 +1,12 @@
 package cli
 
 import (
-	"regexp"
 	"time"
 
 	"onessh/internal/audit"
 
 	"github.com/spf13/cobra"
 )
-
-var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const redactedSecretValue = "[REDACTED]"
 

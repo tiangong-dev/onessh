@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 
 	"gopkg.in/yaml.v3"
@@ -30,10 +31,7 @@ func buildHostListRows(cfg store.PlainConfig, aliases []string) []hostListRow {
 	for _, alias := range aliases {
 		host := cfg.Hosts[alias]
 		userName, authType, status := summarizeHostIdentityForList(cfg, host)
-		port := host.Port
-		if port <= 0 {
-			port = 22
-		}
+		port := domain.EffectivePort(host.Port)
 		proxyJump := strings.TrimSpace(host.ProxyJump)
 		if proxyJump == "" {
 			proxyJump = "-"
@@ -108,10 +106,7 @@ func buildHostDumpConfig(cfg store.PlainConfig, alias string, host store.HostCon
 }
 
 func renderHostDetailsTable(out io.Writer, alias string, host store.HostConfig, cfg store.PlainConfig) {
-	port := host.Port
-	if port <= 0 {
-		port = 22
-	}
+	port := domain.EffectivePort(host.Port)
 
 	fmt.Fprintf(out, "Alias:        %s\n", alias)
 	fmt.Fprintf(out, "Host:         %s\n", host.Host)

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 )
 
@@ -41,16 +42,13 @@ func buildProxyJumpArgs(cfg store.PlainConfig, proxyJump string) ([]string, erro
 		return nil, fmt.Errorf("jump host alias %q references unknown user profile %q", proxyJump, jumpHostCfg.UserRef)
 	}
 
-	port := jumpHostCfg.Port
-	if port <= 0 {
-		port = 22
-	}
+	port := domain.EffectivePort(jumpHostCfg.Port)
 
-	switch strings.ToLower(jumpUser.Auth.Type) {
-	case "key":
+	switch domain.NormalizeAuthType(jumpUser.Auth.Type) {
+	case domain.AuthTypeKey:
 		dest := fmt.Sprintf("%s@%s:%d", jumpUser.Name, jumpHostCfg.Host, port)
 		return []string{"-J", dest}, nil
-	case "password":
+	case domain.AuthTypePassword:
 		// Run onessh itself as the ProxyCommand so it can handle password auth
 		// using the existing passcache agent. The subprocess inherits the current
 		// environment (agent socket, data directory, etc.).
@@ -77,10 +75,7 @@ func buildOnesshProxyCommand(exePath, proxyJump string) string {
 }
 
 func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostConfig, portFlag string) ([]string, error) {
-	port := host.Port
-	if port <= 0 {
-		port = 22
-	}
+	port := domain.EffectivePort(host.Port)
 	args = append(args, portFlag, strconv.Itoa(port))
 	if host.ProxyJump != "" {
 		proxyArgs, err := buildProxyJumpArgs(cfg, host.ProxyJump)
@@ -93,8 +88,8 @@ func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostCon
 }
 
 func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
-	switch strings.ToLower(auth.Type) {
-	case "key":
+	switch domain.NormalizeAuthType(auth.Type) {
+	case domain.AuthTypeKey:
 		if auth.KeyPath == "" {
 			return args, nil
 		}
@@ -103,7 +98,7 @@ func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
 			return nil, err
 		}
 		return append(args, "-i", keyPath), nil
-	case "password":
+	case domain.AuthTypePassword:
 		return args, nil
 	default:
 		return nil, fmt.Errorf("unsupported auth type: %s", auth.Type)

@@ -14,10 +14,10 @@ func TestMatchHostFilter(t *testing.T) {
 	}
 
 	cases := map[string]bool{
-		"prod-*":   true,
-		"db*.com":  true,
+		"prod-*":    true,
+		"db*.com":   true,
 		"*database": true,
-		"web-*":    false,
+		"web-*":     false,
 	}
 
 	for pattern, want := range cases {

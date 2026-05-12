@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -66,10 +67,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 		return err
 	}
 
-	displayPort := target.Port
-	if displayPort <= 0 {
-		displayPort = 22
-	}
+	displayPort := domain.EffectivePort(target.Port)
 	displayTarget := target.Host
 	if userName != "" {
 		displayTarget = fmt.Sprintf("%s@%s", userName, target.Host)
