@@ -52,6 +52,14 @@ func ResolveAgentCapability(explicit, envValue, sessionID string) string {
 	return DeriveAgentCapability(sessionID)
 }
 
+// DeriveAgentCapability derives a per-session capability token from the shell
+// session identifier (typically the parent shell PID). It is a deterministic
+// SHA-256 over a fixed prefix concatenated with the session id.
+//
+// Capability is NOT a secret. Any process with the same UID can derive it.
+// Treat it only as a session discriminator, not authentication. Strong
+// isolation between same-UID processes requires an explicit, randomly
+// generated capability supplied out of band.
 func DeriveAgentCapability(sessionID string) string {
 	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + sessionID))
 	return hex.EncodeToString(sum[:])

@@ -124,13 +124,23 @@ func runWithTTY(workDir, command, input string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	// util-linux `script` treats `-c` as its own flag; run `sh -lc` inside `-c` so both
-	// BSD and GNU `script` behave the same.
-	cmd := exec.CommandContext(ctx, "script", "-q", "-c", "sh -lc "+shellQuote(command), "/dev/null")
+	// BSD `script` (macOS): `script [-q] file [command ...]` — no `-c` flag.
+	// util-linux `script` (Linux): `script [-q] [-c command] [file]` — needs `-c`.
+	// Use the BSD positional form on darwin/*bsd, and `-c` on Linux.
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin", "freebsd", "netbsd", "openbsd", "dragonfly":
+		cmd = exec.CommandContext(ctx, "script", "-q", "/dev/null", "sh", "-lc", command)
+	default:
+		cmd = exec.CommandContext(ctx, "script", "-q", "-c", "sh -lc "+shellQuote(command), "/dev/null")
+	}
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	if err != nil {
+		return string(out), fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
 }
 
 func requireScript(t *testing.T) {

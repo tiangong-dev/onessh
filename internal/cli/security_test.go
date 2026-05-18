@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"onessh/internal/domain"
 )
@@ -88,6 +90,47 @@ func TestNewPasswordFD(t *testing.T) {
 	}
 	if string(raw) != "hello-pass\n" {
 		t.Fatalf("unexpected password payload: %q", string(raw))
+	}
+}
+
+// TestNewPasswordFDLargePasswordDoesNotBlock guards against a regression where
+// the password was written synchronously in newPasswordFD. OS pipe buffers are
+// typically 64 KiB on Linux; writing a larger payload before the reader drains
+// would deadlock the caller. The background-goroutine implementation lets the
+// reader drain at its own pace.
+func TestNewPasswordFDLargePasswordDoesNotBlock(t *testing.T) {
+	t.Parallel()
+
+	const size = 128 * 1024
+	password := strings.Repeat("a", size)
+
+	done := make(chan struct{})
+	var (
+		fd      *os.File
+		cleanup func()
+		fdErr   error
+	)
+	go func() {
+		fd, cleanup, fdErr = newPasswordFD(password)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("newPasswordFD blocked on large password (pipe buffer deadlock)")
+	}
+	if fdErr != nil {
+		t.Fatalf("newPasswordFD: %v", fdErr)
+	}
+	defer cleanup()
+
+	raw, err := io.ReadAll(fd)
+	if err != nil {
+		t.Fatalf("read password fd: %v", err)
+	}
+	if len(raw) != size+1 || string(raw[:size]) != password || raw[size] != '\n' {
+		t.Fatalf("unexpected payload size=%d (want %d) trailing=%q", len(raw), size+1, raw[len(raw)-1:])
 	}
 }
 

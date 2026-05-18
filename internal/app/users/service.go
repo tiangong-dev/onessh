@@ -9,6 +9,27 @@ import (
 	"onessh/internal/domain"
 )
 
+// ErrUserInUse is returned by Remove when the user profile is still referenced
+// by one or more host entries. Callers should use errors.Is to detect this
+// condition; the wrapping UserInUseError carries the referencing host aliases.
+var ErrUserInUse = errors.New("user profile is in use by host(s)")
+
+// UserInUseError augments ErrUserInUse with the offending user alias and host
+// references. It implements errors.Is so that errors.Is(err, ErrUserInUse) is
+// true.
+type UserInUseError struct {
+	Alias string
+	Hosts []string
+}
+
+func (e *UserInUseError) Error() string {
+	return fmt.Sprintf("user profile %q is used by host(s): %s", e.Alias, strings.Join(e.Hosts, ", "))
+}
+
+func (e *UserInUseError) Is(target error) bool {
+	return target == ErrUserInUse
+}
+
 type Service struct{}
 
 type AddInput struct {
@@ -119,7 +140,7 @@ func (Service) Remove(input RemoveInput) (Output, error) {
 
 	inUseBy := hostAliasesUsingUser(input.Config, alias)
 	if len(inUseBy) > 0 {
-		return Output{}, fmt.Errorf("user profile %q is used by host(s): %s", alias, strings.Join(inUseBy, ", "))
+		return Output{}, &UserInUseError{Alias: alias, Hosts: inUseBy}
 	}
 
 	cfg := cloneConfig(input.Config)

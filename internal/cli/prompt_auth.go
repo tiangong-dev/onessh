@@ -45,6 +45,7 @@ func promptAuthConfig(reader *bufio.Reader, existing *domain.AuthConfig) (domain
 				return domain.AuthConfig{}, err
 			}
 			if changed {
+				// password string copy stays in heap; Go has no API to wipe immutable strings
 				auth.Password = string(password)
 				wipe(password)
 			} else {
@@ -55,6 +56,7 @@ func promptAuthConfig(reader *bufio.Reader, existing *domain.AuthConfig) (domain
 			if err != nil {
 				return domain.AuthConfig{}, err
 			}
+			// password string copy stays in heap; Go has no API to wipe immutable strings
 			auth.Password = string(password)
 			wipe(password)
 		}

@@ -2,12 +2,34 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
+
+// passwordFlagHelp is the shared help text for the --password CLI flag. The
+// warning is intentionally surfaced in --help so users are nudged toward the
+// interactive prompt before they paste a plaintext password.
+const passwordFlagHelp = "SSH password when auth-type=password (WARNING: visible in shell history and process list; prefer interactive prompt)"
+
+// hostsPasswordFlagHelp mirrors passwordFlagHelp for the host update command.
+const hostsPasswordFlagHelp = "Update linked user password (WARNING: visible in shell history and process list; prefer interactive prompt)"
+
+// warnIfPasswordFlagInsecure emits a one-line stderr warning when the user
+// passed a non-empty --password value on the command line. The warning is
+// non-fatal: --password remains supported for scripted/non-interactive use.
+func warnIfPasswordFlagInsecure(cmd *cobra.Command, password string) {
+	if cmd == nil || !cmd.Flags().Changed("password") {
+		return
+	}
+	if strings.TrimSpace(password) == "" {
+		return
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), "onessh: --password is insecure (visible in ps/history); use interactive prompt or --password-stdin if available")
+}
 
 func authConfigFromFlags(authType, keyPath, password string) (domain.AuthConfig, error) {
 	if strings.TrimSpace(keyPath) != "" && strings.TrimSpace(password) != "" {
@@ -33,6 +55,7 @@ func authConfigFromFlags(authType, keyPath, password string) (domain.AuthConfig,
 			if err != nil {
 				return domain.AuthConfig{}, err
 			}
+			// password string copy stays in heap; Go has no API to wipe immutable strings
 			auth.Password = string(prompted)
 			wipe(prompted)
 		} else {
@@ -78,6 +101,7 @@ func authConfigFromFlagValues(
 				if err != nil {
 					return domain.AuthConfig{}, err
 				}
+				// password string copy stays in heap; Go has no API to wipe immutable strings
 				pw = string(prompted)
 				wipe(prompted)
 			}

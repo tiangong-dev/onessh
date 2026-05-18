@@ -27,10 +27,10 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	}
 	opts, repo := prepareNonInteractiveCLITest(t, cfg, passphrase)
 
-	var updateOut bytes.Buffer
+	var updateOut, updateErr bytes.Buffer
 	updateCmd := newUpdateCmd(opts)
 	updateCmd.SetOut(&updateOut)
-	updateCmd.SetErr(&updateOut)
+	updateCmd.SetErr(&updateErr)
 	updateCmd.SetArgs([]string{
 		"web1",
 		"--alias", "web2",
@@ -54,6 +54,9 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	}
 	if got, want := updateOut.String(), "✔ host web1 renamed to web2 and updated\n"; got != want {
 		t.Fatalf("host update output = %q, want %q", got, want)
+	}
+	if !strings.Contains(updateErr.String(), "--password is insecure") {
+		t.Fatalf("expected --password insecure warning on stderr, got %q", updateErr.String())
 	}
 
 	updated, err := repo.Load(passphrase)
@@ -143,10 +146,10 @@ func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 		t.Fatalf("user add output = %q, want %q", got, want)
 	}
 
-	var updateOut bytes.Buffer
+	var updateOut, updateErr bytes.Buffer
 	updateCmd := newUserUpdateCmd(opts)
 	updateCmd.SetOut(&updateOut)
-	updateCmd.SetErr(&updateOut)
+	updateCmd.SetErr(&updateErr)
 	updateCmd.SetArgs([]string{
 		"ops_user",
 		"--name", " root ",
@@ -158,6 +161,9 @@ func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	}
 	if got, want := updateOut.String(), "✔ user profile ops_user updated\n"; got != want {
 		t.Fatalf("user update output = %q, want %q", got, want)
+	}
+	if !strings.Contains(updateErr.String(), "--password is insecure") {
+		t.Fatalf("expected --password insecure warning on stderr, got %q", updateErr.String())
 	}
 
 	updated, err := repo.Load(passphrase)
