@@ -114,9 +114,11 @@ wrong, and any mistake collapses GCM's security.
 
 ### Master password in-memory wiping limitations
 
-OneSSH zeroes `[]byte` master-password buffers as soon as the encryption /
-decryption boundary is crossed. However Go's `string` is immutable and the
-runtime gives no API to overwrite its backing storage. The moment a password
+OneSSH zeroes `[]byte` master-password buffers when the call that needs the
+password returns (typically via `defer wipe(...)`), which keeps the window
+short but means a buffer can still be alive while a command runs. Go's
+`string` is immutable and the runtime gives no API to overwrite its backing
+storage. The moment a password
 is converted to `string` (for example to put it inside a struct field or to
 pass to a library that expects `string`), a heap copy is created that lives
 until garbage collection — and even then, no zeroization is guaranteed.

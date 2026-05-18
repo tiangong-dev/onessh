@@ -9,11 +9,15 @@ import (
 	"onessh/internal/domain"
 )
 
-// PasswordFDProvider creates the fd consumed by sshpass -d.
-type PasswordFDProvider func(password string) (*os.File, func(), error)
+// PasswordFDProvider creates the fd consumed by sshpass -d. The cleanup
+// returns any error from finishing the password write or releasing fds so the
+// caller can surface it alongside the command result.
+type PasswordFDProvider func(password string) (*os.File, func() error, error)
 
 // AskPassEnvProvider prepares SSH_ASKPASS environment variables and cleanup.
-type AskPassEnvProvider func(agentSocket, agentCapability, password string) ([]string, func(), error)
+// Cleanup returns any error from clearing the agent token or removing the
+// launcher script.
+type AskPassEnvProvider func(agentSocket, agentCapability, password string) ([]string, func() error, error)
 
 // PasswordAuthStrategy selects the password authentication transport wrapper.
 type PasswordAuthStrategy struct {
@@ -40,7 +44,7 @@ type PasswordAuthResult struct {
 	Args       []string
 	Env        []string
 	ExtraFiles []*os.File
-	Cleanup    func()
+	Cleanup    func() error
 }
 
 // ApplyPasswordAuth returns the command invocation for password auth without
@@ -94,4 +98,4 @@ func (s PasswordAuthStrategy) ApplyPasswordAuth(req PasswordAuthRequest) (Passwo
 	return result, nil
 }
 
-func noopCleanup() {}
+func noopCleanup() error { return nil }

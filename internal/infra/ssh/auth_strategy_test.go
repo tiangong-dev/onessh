@@ -19,11 +19,11 @@ func TestPasswordAuthStrategySkipsNonPasswordAuth(t *testing.T) {
 			t.Fatal("LookPath should not be called for key auth")
 			return "", nil
 		},
-		NewPasswordFD: func(string) (*os.File, func(), error) {
+		NewPasswordFD: func(string) (*os.File, func() error, error) {
 			t.Fatal("NewPasswordFD should not be called for key auth")
 			return nil, nil, nil
 		},
-		PrepareAskPassEnv: func(string, string, string) ([]string, func(), error) {
+		PrepareAskPassEnv: func(string, string, string) ([]string, func() error, error) {
 			t.Fatal("PrepareAskPassEnv should not be called for key auth")
 			return nil, nil, nil
 		},
@@ -55,7 +55,9 @@ func TestPasswordAuthStrategySkipsNonPasswordAuth(t *testing.T) {
 	if got.Cleanup == nil {
 		t.Fatal("expected no-op cleanup")
 	}
-	got.Cleanup()
+	if cerr := got.Cleanup(); cerr != nil {
+		t.Errorf("cleanup: %v", cerr)
+	}
 }
 
 func TestPasswordAuthStrategyUsesSSHPassWhenAvailable(t *testing.T) {
@@ -77,13 +79,13 @@ func TestPasswordAuthStrategyUsesSSHPassWhenAvailable(t *testing.T) {
 			}
 			return "/usr/bin/sshpass", nil
 		},
-		NewPasswordFD: func(password string) (*os.File, func(), error) {
+		NewPasswordFD: func(password string) (*os.File, func() error, error) {
 			if password != "secret" {
 				t.Fatalf("unexpected password: %q", password)
 			}
-			return reader, func() { fdCleaned = true }, nil
+			return reader, func() error { fdCleaned = true; return nil }, nil
 		},
-		PrepareAskPassEnv: func(string, string, string) ([]string, func(), error) {
+		PrepareAskPassEnv: func(string, string, string) ([]string, func() error, error) {
 			t.Fatal("PrepareAskPassEnv should not be called when sshpass is available")
 			return nil, nil, nil
 		},
@@ -114,7 +116,9 @@ func TestPasswordAuthStrategyUsesSSHPassWhenAvailable(t *testing.T) {
 	if warnings.Len() != 0 {
 		t.Fatalf("expected no warning, got %q", warnings.String())
 	}
-	got.Cleanup()
+	if cerr := got.Cleanup(); cerr != nil {
+		t.Errorf("cleanup: %v", cerr)
+	}
 	if !fdCleaned {
 		t.Fatal("expected sshpass fd cleanup to run")
 	}
@@ -132,16 +136,17 @@ func TestPasswordAuthStrategyFallsBackToAskPassWhenSSHPassMissing(t *testing.T) 
 			}
 			return "", errors.New("not found")
 		},
-		NewPasswordFD: func(string) (*os.File, func(), error) {
+		NewPasswordFD: func(string) (*os.File, func() error, error) {
 			t.Fatal("NewPasswordFD should not be called when sshpass is missing")
 			return nil, nil, nil
 		},
-		PrepareAskPassEnv: func(socket, capability, password string) ([]string, func(), error) {
+		PrepareAskPassEnv: func(socket, capability, password string) ([]string, func() error, error) {
 			if socket != "/tmp/agent.sock" || capability != "cap" || password != "secret" {
 				t.Fatalf("unexpected askpass request: socket=%q capability=%q password=%q", socket, capability, password)
 			}
-			return []string{"SSH_ASKPASS=/tmp/helper", "DISPLAY=onessh:0"}, func() {
+			return []string{"SSH_ASKPASS=/tmp/helper", "DISPLAY=onessh:0"}, func() error {
 				askPassCleaned = true
+				return nil
 			}, nil
 		},
 		WarningWriter: &warnings,
@@ -173,7 +178,9 @@ func TestPasswordAuthStrategyFallsBackToAskPassWhenSSHPassMissing(t *testing.T) 
 	if !strings.Contains(warnings.String(), "sshpass not found; using weaker SSH_ASKPASS fallback") {
 		t.Fatalf("expected askpass fallback warning, got %q", warnings.String())
 	}
-	got.Cleanup()
+	if cerr := got.Cleanup(); cerr != nil {
+		t.Errorf("cleanup: %v", cerr)
+	}
 	if !askPassCleaned {
 		t.Fatal("expected askpass cleanup to run")
 	}

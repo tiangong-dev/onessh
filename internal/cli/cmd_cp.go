@@ -230,7 +230,7 @@ func executeRemoteToRemoteCopy(ctx context.Context, cfg domain.PlainConfig, srcA
 	return err
 }
 
-func executeSCP(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeSCP(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) (retErr error) {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -248,6 +248,10 @@ func executeSCP(ctx context.Context, cfg domain.PlainConfig, host domain.HostCon
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

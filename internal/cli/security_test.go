@@ -82,7 +82,11 @@ func TestNewPasswordFD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPasswordFD: %v", err)
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil {
+			t.Errorf("cleanup: %v", cerr)
+		}
+	}()
 
 	raw, err := io.ReadAll(fd)
 	if err != nil {
@@ -107,7 +111,7 @@ func TestNewPasswordFDLargePasswordDoesNotBlock(t *testing.T) {
 	done := make(chan struct{})
 	var (
 		fd      *os.File
-		cleanup func()
+		cleanup func() error
 		fdErr   error
 	)
 	go func() {
@@ -123,7 +127,11 @@ func TestNewPasswordFDLargePasswordDoesNotBlock(t *testing.T) {
 	if fdErr != nil {
 		t.Fatalf("newPasswordFD: %v", fdErr)
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil {
+			t.Errorf("cleanup: %v", cerr)
+		}
+	}()
 
 	raw, err := io.ReadAll(fd)
 	if err != nil {

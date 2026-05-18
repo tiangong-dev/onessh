@@ -109,7 +109,7 @@ func (execRemoteRunner) ExecRemote(ctx context.Context, req execapp.RemoteReques
 	return executeRemoteCmd(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
-func executeRemoteCmd(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) (retErr error) {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -128,6 +128,10 @@ func executeRemoteCmd(ctx context.Context, cfg domain.PlainConfig, host domain.H
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

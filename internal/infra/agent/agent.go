@@ -233,7 +233,7 @@ func BuildAskPassEnv(input AskPassEnv) []string {
 }
 
 // PrepareAskPassEnv registers a token and creates the temporary SSH_ASKPASS launcher.
-func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
+func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func() error, error) {
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, errors.New("password auth requires non-empty password")
 	}
@@ -267,9 +267,12 @@ func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string,
 		Token:      token,
 		Capability: capabilityValue,
 	})
-	cleanup := func() {
+	cleanup := func() error {
 		clearToken()
-		_ = os.Remove(scriptPath)
+		if err := os.Remove(scriptPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove askpass launcher: %w", err)
+		}
+		return nil
 	}
 	return env, cleanup, nil
 }

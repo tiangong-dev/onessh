@@ -74,7 +74,16 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 		// Stop dispatching new work as soon as the caller cancels (e.g. Ctrl-C).
 		// Already-running goroutines still finish via wg.Wait so we don't leak,
 		// but the underlying ssh/scp processes are killed via exec.CommandContext.
+		// Mark remaining aliases as skipped so callers don't render them as OK.
 		if ctx.Err() != nil {
+			for j := i; j < total; j++ {
+				results[j] = BatchResult{
+					Alias: input.Aliases[j],
+					Host:  input.Config.Hosts[input.Aliases[j]],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+			}
 			break
 		}
 		wg.Add(1)

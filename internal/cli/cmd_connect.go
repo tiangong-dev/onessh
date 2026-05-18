@@ -106,7 +106,7 @@ func executeSSH(
 	errOut io.Writer,
 	agentSocket string,
 	agentCapability string,
-) error {
+) (retErr error) {
 	if stdin == nil {
 		stdin = os.Stdin
 	}
@@ -144,7 +144,11 @@ func executeSSH(
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 	return runExternalCommand(ctx, binary, args, env, extraFiles, stdin, stdout, errOut)
 }
 
@@ -173,6 +177,6 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 	return "sh -lc " + shellSingleQuote(script)
 }
 
-func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
+func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func() error, error) {
 	return infraagent.PrepareAskPassEnv(agentSocket, agentCapability, password)
 }

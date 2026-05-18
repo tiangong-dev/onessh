@@ -103,7 +103,7 @@ func (pingRunner) Ping(ctx context.Context, req connectivityapp.Request) error {
 	return runSSHTest(ctx, req.Config, req.Host, req.UserName, req.Auth, req.Timeout.Seconds, req.Agent.Socket, req.Agent.Capability)
 }
 
-func runSSHTest(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
+func runSSHTest(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, timeoutSec int, agentSocket, agentCapability string) (retErr error) {
 	args := []string{
 		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
 	}
@@ -122,6 +122,10 @@ func runSSHTest(ctx context.Context, cfg domain.PlainConfig, host domain.HostCon
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 	return runExternalCommand(ctx, binary, args, env, extraFiles, nil, nil, nil)
 }

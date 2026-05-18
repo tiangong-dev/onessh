@@ -42,7 +42,7 @@ func sshArgsOptions() infrassh.ArgsOptions {
 	return infrassh.ArgsOptions{ResolveOnesshPath: os.Executable}
 }
 
-func withPasswordAuth(binary string, args []string, auth domain.AuthConfig, env []string, agentSocket, agentCapability string, errOut io.Writer, baseBinary string) (string, []string, []string, []*os.File, func(), error) {
+func withPasswordAuth(binary string, args []string, auth domain.AuthConfig, env []string, agentSocket, agentCapability string, errOut io.Writer, baseBinary string) (string, []string, []string, []*os.File, func() error, error) {
 	result, err := infrassh.PasswordAuthStrategy{
 		LookPath:          exec.LookPath,
 		NewPasswordFD:     newPasswordFD,
