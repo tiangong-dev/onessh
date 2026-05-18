@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/domain"
 	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 )
 
 func TestServiceConnectRunsTransport(t *testing.T) {
@@ -20,7 +20,7 @@ func TestServiceConnectRunsTransport(t *testing.T) {
 	var errOut bytes.Buffer
 	resolver := &fakeResolver{
 		userName: "alice",
-		auth:     store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
+		auth:     domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
 	}
 	transport := &fakeTransport{}
 	service := Service{
@@ -74,7 +74,7 @@ func TestServiceConnectQuietSuppressesStatusOutput(t *testing.T) {
 
 	var errOut bytes.Buffer
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Transport:        &fakeTransport{},
 	}
 
@@ -98,7 +98,7 @@ func TestServiceConnectMissingHost(t *testing.T) {
 	t.Parallel()
 
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Transport:        &fakeTransport{},
 	}
 
@@ -138,7 +138,7 @@ func TestServiceConnectTransportErrorReturnsOutputForAudit(t *testing.T) {
 
 	wantErr := errors.New("ssh failed")
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Transport:        &fakeTransport{err: wantErr},
 	}
 
@@ -163,7 +163,7 @@ func TestServiceConnectAuditsTransportResult(t *testing.T) {
 
 		audit := &fakeAudit{}
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Transport:        &fakeTransport{},
 			Audit:            audit,
 		}
@@ -191,7 +191,7 @@ func TestServiceConnectAuditsTransportResult(t *testing.T) {
 		wantErr := errors.New("ssh failed")
 		audit := &fakeAudit{}
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Transport:        &fakeTransport{err: wantErr},
 			Audit:            audit,
 		}
@@ -221,7 +221,7 @@ func TestServiceConnectIgnoresNilAndFailingAuditSink(t *testing.T) {
 		t.Parallel()
 
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Transport:        &fakeTransport{},
 		}
 		if _, err := service.Connect(context.Background(), Input{Config: testConfig(), Alias: "prod", Quiet: true}); err != nil {
@@ -233,7 +233,7 @@ func TestServiceConnectIgnoresNilAndFailingAuditSink(t *testing.T) {
 		t.Parallel()
 
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Transport:        &fakeTransport{},
 			Audit:            &fakeAudit{err: errors.New("audit unavailable")},
 		}
@@ -243,15 +243,15 @@ func TestServiceConnectIgnoresNilAndFailingAuditSink(t *testing.T) {
 	})
 }
 
-func testConfig() store.PlainConfig {
-	return store.PlainConfig{
-		Users: map[string]store.UserConfig{
+func testConfig() domain.PlainConfig {
+	return domain.PlainConfig{
+		Users: map[string]domain.UserConfig{
 			"alice": {
 				Name: "alice",
-				Auth: store.AuthConfig{Type: "key"},
+				Auth: domain.AuthConfig{Type: "key"},
 			},
 		},
-		Hosts: map[string]store.HostConfig{
+		Hosts: map[string]domain.HostConfig{
 			"prod": {
 				Host:    "prod.example.com",
 				UserRef: "alice",
@@ -262,12 +262,12 @@ func testConfig() store.PlainConfig {
 
 type fakeResolver struct {
 	userName string
-	auth     store.AuthConfig
+	auth     domain.AuthConfig
 	err      error
 	called   int
 }
 
-func (f *fakeResolver) ResolveHostIdentity(store.PlainConfig, store.HostConfig) (string, store.AuthConfig, error) {
+func (f *fakeResolver) ResolveHostIdentity(domain.PlainConfig, domain.HostConfig) (string, domain.AuthConfig, error) {
 	f.called++
 	return f.userName, f.auth, f.err
 }

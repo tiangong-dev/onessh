@@ -7,23 +7,23 @@ import (
 	"os"
 	"strings"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/manifoldco/promptui"
 )
 
-func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store.HostConfig, error) {
+func promptHostConfig(cfg *domain.PlainConfig, existing *domain.HostConfig) (domain.HostConfig, error) {
 	if cfg == nil {
-		return store.HostConfig{}, errors.New("config is required")
+		return domain.HostConfig{}, errors.New("config is required")
 	}
 	if cfg.Users == nil {
-		cfg.Users = map[string]store.UserConfig{}
+		cfg.Users = map[string]domain.UserConfig{}
 	}
 
 	inputReader := bufio.NewReader(os.Stdin)
 	defaultUserName := currentUserName()
 	defaultUserRef := ""
-	defaultUserAuth := store.AuthConfig{
+	defaultUserAuth := domain.AuthConfig{
 		Type:    "key",
 		KeyPath: "~/.ssh/id_ed25519",
 	}
@@ -59,7 +59,7 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 
 	host, err := promptNonEmpty(inputReader, "Host IP/Domain", defaultHost)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 
 	existingUserAliases := map[string]struct{}{}
@@ -69,32 +69,32 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 
 	userRef, err := promptUserRefForHost(inputReader, cfg, defaultUserRef, defaultUserName, &defaultUserAuth)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 	if existing != nil {
 		if _, existedBefore := existingUserAliases[userRef]; existedBefore {
 			if err := maybeEditSelectedUserProfile(inputReader, cfg, userRef); err != nil {
-				return store.HostConfig{}, err
+				return domain.HostConfig{}, err
 			}
 		}
 	}
 
 	port, err := promptPort(inputReader, defaultPort)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 
 	proxyJump, err := promptOptional(inputReader, "Proxy jump (alias or user@host:port, leave empty to skip)", defaultProxyJump)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 
 	description, err := promptOptional(inputReader, "Description", defaultDescription)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 
-	return store.HostConfig{
+	return domain.HostConfig{
 		Host:        host,
 		Description: strings.TrimSpace(description),
 		UserRef:     userRef,
@@ -108,12 +108,12 @@ func promptHostConfig(cfg *store.PlainConfig, existing *store.HostConfig) (store
 
 func promptUserRefForHost(
 	reader *bufio.Reader,
-	cfg *store.PlainConfig,
+	cfg *domain.PlainConfig,
 	defaultUserRef, defaultUserName string,
-	defaultUserAuth *store.AuthConfig,
+	defaultUserAuth *domain.AuthConfig,
 ) (string, error) {
 	if cfg.Users == nil {
-		cfg.Users = map[string]store.UserConfig{}
+		cfg.Users = map[string]domain.UserConfig{}
 	}
 
 	if len(cfg.Users) == 0 {
@@ -126,9 +126,9 @@ const selectPageSize = 10
 
 func promptUserRefSelect(
 	reader *bufio.Reader,
-	cfg *store.PlainConfig,
+	cfg *domain.PlainConfig,
 	defaultUserRef, defaultUserName string,
-	defaultUserAuth *store.AuthConfig,
+	defaultUserAuth *domain.AuthConfig,
 ) (string, error) {
 	aliases := sortedUserAliases(cfg.Users)
 	items := make([]string, 0, len(aliases)+2)
@@ -175,7 +175,7 @@ func promptUserRefSelect(
 	}
 }
 
-func promptUserRefByAlias(reader *bufio.Reader, cfg *store.PlainConfig) (string, error) {
+func promptUserRefByAlias(reader *bufio.Reader, cfg *domain.PlainConfig) (string, error) {
 	out := promptWriter()
 	for {
 		alias, err := promptNonEmpty(reader, "User profile alias", "")
@@ -196,9 +196,9 @@ func promptUserRefByAlias(reader *bufio.Reader, cfg *store.PlainConfig) (string,
 
 func createOrReuseUserProfile(
 	reader *bufio.Reader,
-	cfg *store.PlainConfig,
+	cfg *domain.PlainConfig,
 	defaultUserName string,
-	defaultUserAuth *store.AuthConfig,
+	defaultUserAuth *domain.AuthConfig,
 ) (string, error) {
 	out := promptWriter()
 	userName, err := promptNonEmpty(reader, "User", defaultUserName)
@@ -237,7 +237,7 @@ func createOrReuseUserProfile(
 			return "", err
 		}
 
-		cfg.Users[alias] = store.UserConfig{
+		cfg.Users[alias] = domain.UserConfig{
 			Name: userName,
 			Auth: auth,
 		}
@@ -245,7 +245,7 @@ func createOrReuseUserProfile(
 	}
 }
 
-func maybeEditSelectedUserProfile(reader *bufio.Reader, cfg *store.PlainConfig, userRef string) error {
+func maybeEditSelectedUserProfile(reader *bufio.Reader, cfg *domain.PlainConfig, userRef string) error {
 	userCfg, exists := cfg.Users[userRef]
 	if !exists {
 		return nil

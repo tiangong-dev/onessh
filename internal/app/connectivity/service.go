@@ -9,7 +9,6 @@ import (
 	commonapp "onessh/internal/app/common"
 	"onessh/internal/domain"
 	"onessh/internal/ports"
-	"onessh/internal/store"
 )
 
 type IdentityResolver = ports.IdentityResolver
@@ -31,7 +30,7 @@ type TimeoutConfig struct {
 }
 
 type Input struct {
-	Config  store.PlainConfig
+	Config  domain.PlainConfig
 	Alias   string
 	Timeout TimeoutConfig
 	Agent   AgentConfig
@@ -46,10 +45,10 @@ type Output struct {
 }
 
 type Request struct {
-	Config   store.PlainConfig
-	Host     store.HostConfig
+	Config   domain.PlainConfig
+	Host     domain.HostConfig
 	UserName string
-	Auth     store.AuthConfig
+	Auth     domain.AuthConfig
 	Timeout  TimeoutConfig
 	Agent    AgentConfig
 }

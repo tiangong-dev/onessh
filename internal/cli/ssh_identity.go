@@ -6,34 +6,34 @@ import (
 	"sort"
 	"strings"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
-func resolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func resolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	if strings.TrimSpace(host.UserRef) == "" {
-		return "", store.AuthConfig{}, errors.New("host has no user_ref configured")
+		return "", domain.AuthConfig{}, errors.New("host has no user_ref configured")
 	}
 
 	userCfg, ok := cfg.Users[host.UserRef]
 	if !ok {
-		return "", store.AuthConfig{}, fmt.Errorf("host references missing user profile: %s", host.UserRef)
+		return "", domain.AuthConfig{}, fmt.Errorf("host references missing user profile: %s", host.UserRef)
 	}
 	if strings.TrimSpace(userCfg.Name) == "" {
-		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has empty name", host.UserRef)
+		return "", domain.AuthConfig{}, fmt.Errorf("user profile %q has empty name", host.UserRef)
 	}
 
 	normalizedAuthType := normalizeAuthType(userCfg.Auth.Type)
 	if normalizedAuthType == "" {
-		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has no auth configured", host.UserRef)
+		return "", domain.AuthConfig{}, fmt.Errorf("user profile %q has no auth configured", host.UserRef)
 	}
 	userCfg.Auth.Type = normalizedAuthType
 	if userCfg.Auth.Type == "password" && strings.TrimSpace(userCfg.Auth.Password) == "" {
-		return "", store.AuthConfig{}, fmt.Errorf("user profile %q has empty password", host.UserRef)
+		return "", domain.AuthConfig{}, fmt.Errorf("user profile %q has empty password", host.UserRef)
 	}
 	return strings.TrimSpace(userCfg.Name), userCfg.Auth, nil
 }
 
-func summarizeHostIdentityForList(cfg store.PlainConfig, host store.HostConfig) (string, string, string) {
+func summarizeHostIdentityForList(cfg domain.PlainConfig, host domain.HostConfig) (string, string, string) {
 	userRef := strings.TrimSpace(host.UserRef)
 	if userRef == "" {
 		return "-", "-", "missing_user_ref"
@@ -60,7 +60,7 @@ func summarizeHostIdentityForList(cfg store.PlainConfig, host store.HostConfig) 
 	return userName, authType, "ok"
 }
 
-func hostAliasesUsingUser(cfg store.PlainConfig, userAlias string) []string {
+func hostAliasesUsingUser(cfg domain.PlainConfig, userAlias string) []string {
 	var hostAliases []string
 	for hostAlias, hostCfg := range cfg.Hosts {
 		if hostCfg.UserRef == userAlias {

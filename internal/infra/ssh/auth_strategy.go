@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 // PasswordFDProvider creates the fd consumed by sshpass -d.
@@ -27,7 +27,7 @@ type PasswordAuthStrategy struct {
 type PasswordAuthRequest struct {
 	Binary          string
 	Args            []string
-	Auth            store.AuthConfig
+	Auth            domain.AuthConfig
 	Env             []string
 	AgentSocket     string
 	AgentCapability string

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 )
 
@@ -37,15 +38,15 @@ func TestChangeMasterPasswordSuccess(t *testing.T) {
 	t.Parallel()
 
 	repo := store.Repository{Path: filepath.Join(t.TempDir(), "config")}
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = store.HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,
@@ -77,15 +78,15 @@ func TestChangeMasterPasswordWrongCurrentPassword(t *testing.T) {
 	t.Parallel()
 
 	repo := store.Repository{Path: filepath.Join(t.TempDir(), "config")}
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = store.HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,

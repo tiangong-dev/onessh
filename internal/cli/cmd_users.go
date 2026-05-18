@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	appusers "onessh/internal/app/users"
+	"onessh/internal/domain"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -122,9 +123,9 @@ func newUserShowCmd(opts *rootOptions) *cobra.Command {
 			}
 
 			if normalizedFormat == "yaml" {
-				outCfg := store.PlainConfig{
-					Hosts: map[string]store.HostConfig{},
-					Users: map[string]store.UserConfig{alias: userCfg},
+				outCfg := domain.PlainConfig{
+					Hosts: map[string]domain.HostConfig{},
+					Users: map[string]domain.UserConfig{alias: userCfg},
 				}
 				if !showSecrets {
 					outCfg = redactConfigForDump(outCfg)
@@ -193,7 +194,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			var auth store.AuthConfig
+			var auth domain.AuthConfig
 			authType = normalizeAuthType(authType)
 			if authType != "" {
 				auth, err = authConfigFromFlags(authType, keyPath, password)
@@ -487,8 +488,8 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 }
 
 type masterPasswordRepository interface {
-	Load([]byte) (store.PlainConfig, error)
-	SaveWithReset(store.PlainConfig, []byte) error
+	Load([]byte) (domain.PlainConfig, error)
+	SaveWithReset(domain.PlainConfig, []byte) error
 }
 
 func changeMasterPassword(

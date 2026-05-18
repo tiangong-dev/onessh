@@ -6,12 +6,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"onessh/internal/domain"
 	"onessh/internal/ports"
-	"onessh/internal/store"
 )
 
 type BatchIdentityResolver interface {
-	ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error)
+	ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error)
 }
 
 type BatchRunner interface {
@@ -25,7 +25,7 @@ func (f BatchRunnerFunc) RunBatchHost(ctx context.Context, req BatchRequest) Bat
 }
 
 type BatchInput struct {
-	Config           store.PlainConfig
+	Config           domain.PlainConfig
 	Aliases          []string
 	Parallel         int
 	AuditAction      string
@@ -37,14 +37,14 @@ type BatchInput struct {
 
 type BatchRequest struct {
 	Alias    string
-	Host     store.HostConfig
+	Host     domain.HostConfig
 	UserName string
-	Auth     store.AuthConfig
+	Auth     domain.AuthConfig
 }
 
 type BatchResult struct {
 	Alias  string
-	Host   store.HostConfig
+	Host   domain.HostConfig
 	Skip   bool
 	Err    error
 	Stdout []byte
@@ -161,7 +161,7 @@ func recordBatchRunAudit(input BatchInput, result BatchResult, userName string) 
 	recordBatchAudit(input, result.Alias, result.Host, userName, status, result.Err)
 }
 
-func recordBatchAudit(input BatchInput, alias string, host store.HostConfig, userName, result string, err error) {
+func recordBatchAudit(input BatchInput, alias string, host domain.HostConfig, userName, result string, err error) {
 	if input.Audit == nil || input.AuditAction == "" {
 		return
 	}

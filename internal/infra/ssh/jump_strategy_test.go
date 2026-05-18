@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestProxyJumpStrategyPassesThroughRawProxyJump(t *testing.T) {
@@ -19,7 +19,7 @@ func TestProxyJumpStrategyPassesThroughRawProxyJump(t *testing.T) {
 		},
 	}
 
-	got, err := strategy.BuildArgs(store.NewPlainConfig(), "jump@example.com:2200")
+	got, err := strategy.BuildArgs(domain.NewPlainConfig(), "jump@example.com:2200")
 	if err != nil {
 		t.Fatalf("BuildArgs: %v", err)
 	}
@@ -33,12 +33,12 @@ func TestProxyJumpStrategyPassesThroughRawProxyJump(t *testing.T) {
 func TestProxyJumpStrategyBuildsKeyAliasProxyJump(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["jump-user"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["jump-user"] = domain.UserConfig{
 		Name: "jump",
-		Auth: store.AuthConfig{Type: "key"},
+		Auth: domain.AuthConfig{Type: "key"},
 	}
-	cfg.Hosts["bastion"] = store.HostConfig{
+	cfg.Hosts["bastion"] = domain.HostConfig{
 		Host:    "bastion.internal",
 		UserRef: "jump-user",
 	}
@@ -64,12 +64,12 @@ func TestProxyJumpStrategyBuildsKeyAliasProxyJump(t *testing.T) {
 func TestProxyJumpStrategyBuildsPasswordAliasProxyCommand(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["jump-user"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["jump-user"] = domain.UserConfig{
 		Name: "jump",
-		Auth: store.AuthConfig{Type: "password"},
+		Auth: domain.AuthConfig{Type: "password"},
 	}
-	cfg.Hosts["bastion"] = store.HostConfig{
+	cfg.Hosts["bastion"] = domain.HostConfig{
 		Host:    "bastion.internal",
 		UserRef: "jump-user",
 	}
@@ -94,12 +94,12 @@ func TestProxyJumpStrategyBuildsPasswordAliasProxyCommand(t *testing.T) {
 func TestProxyJumpStrategyWrapsPasswordAliasResolverError(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["jump-user"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["jump-user"] = domain.UserConfig{
 		Name: "jump",
-		Auth: store.AuthConfig{Type: "password"},
+		Auth: domain.AuthConfig{Type: "password"},
 	}
-	cfg.Hosts["bastion"] = store.HostConfig{
+	cfg.Hosts["bastion"] = domain.HostConfig{
 		Host:    "bastion.internal",
 		UserRef: "jump-user",
 	}

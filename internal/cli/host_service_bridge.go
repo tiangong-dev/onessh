@@ -7,7 +7,7 @@ import (
 
 	apphosts "onessh/internal/app/hosts"
 	appusers "onessh/internal/app/users"
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
@@ -37,29 +37,29 @@ type hostUpdateFlagValues struct {
 
 func applyHostUpdateFlagsWithServices(
 	cmd *cobra.Command,
-	cfg store.PlainConfig,
+	cfg domain.PlainConfig,
 	alias string,
-	existing store.HostConfig,
+	existing domain.HostConfig,
 	values hostUpdateFlagValues,
-) (store.PlainConfig, string, store.HostConfig, error) {
+) (domain.PlainConfig, string, domain.HostConfig, error) {
 	if cmd.Flags().Changed("alias") && strings.TrimSpace(values.aliasFlag) == "" {
-		return store.PlainConfig{}, "", store.HostConfig{}, errors.New("--alias cannot be empty")
+		return domain.PlainConfig{}, "", domain.HostConfig{}, errors.New("--alias cannot be empty")
 	}
 	if cmd.Flags().Changed("host") && strings.TrimSpace(values.hostFlag) == "" {
-		return store.PlainConfig{}, "", store.HostConfig{}, errors.New("--host cannot be empty")
+		return domain.PlainConfig{}, "", domain.HostConfig{}, errors.New("--host cannot be empty")
 	}
 	if cmd.Flags().Changed("port") && (values.portFlag <= 0 || values.portFlag > 65535) {
-		return store.PlainConfig{}, "", store.HostConfig{}, errors.New("--port must be between 1 and 65535")
+		return domain.PlainConfig{}, "", domain.HostConfig{}, errors.New("--port must be between 1 and 65535")
 	}
 
 	targetRef := strings.TrimSpace(existing.UserRef)
 	if cmd.Flags().Changed("user-ref") {
 		targetRef = normalizeUserAlias(values.userRefFlag)
 		if targetRef == "" {
-			return store.PlainConfig{}, "", store.HostConfig{}, errors.New("--user-ref cannot be empty")
+			return domain.PlainConfig{}, "", domain.HostConfig{}, errors.New("--user-ref cannot be empty")
 		}
 		if _, ok := cfg.Users[targetRef]; !ok {
-			return store.PlainConfig{}, "", store.HostConfig{}, fmt.Errorf("user profile %q not found", targetRef)
+			return domain.PlainConfig{}, "", domain.HostConfig{}, fmt.Errorf("user profile %q not found", targetRef)
 		}
 	}
 
@@ -74,7 +74,7 @@ func applyHostUpdateFlagsWithServices(
 		values.passwordFlag,
 	)
 	if err != nil {
-		return store.PlainConfig{}, "", store.HostConfig{}, err
+		return domain.PlainConfig{}, "", domain.HostConfig{}, err
 	}
 
 	out, err := apphosts.Service{}.Update(apphosts.UpdateInput{
@@ -110,23 +110,23 @@ func applyHostUpdateFlagsWithServices(
 		ClearTags:          cmd.Flags().Changed("clear-tags") && values.clearTags,
 	})
 	if err != nil {
-		return store.PlainConfig{}, "", store.HostConfig{}, err
+		return domain.PlainConfig{}, "", domain.HostConfig{}, err
 	}
 	if _, _, err := resolveHostIdentity(out.Config, out.Host); err != nil {
-		return store.PlainConfig{}, "", store.HostConfig{}, err
+		return domain.PlainConfig{}, "", domain.HostConfig{}, err
 	}
 	return out.Config, out.Alias, out.Host, nil
 }
 
 func updateLinkedUserProfileWithService(
 	cmd *cobra.Command,
-	cfg store.PlainConfig,
+	cfg domain.PlainConfig,
 	targetRef string,
 	userName string,
 	authTypeFlag string,
 	keyPath string,
 	password string,
-) (store.PlainConfig, error) {
+) (domain.PlainConfig, error) {
 	changedUser := cmd.Flags().Changed("user")
 	changedAuthType := cmd.Flags().Changed("auth-type")
 	changedKeyPath := cmd.Flags().Changed("key-path")
@@ -136,20 +136,20 @@ func updateLinkedUserProfileWithService(
 		return cfg, nil
 	}
 	if strings.TrimSpace(targetRef) == "" {
-		return store.PlainConfig{}, errors.New("host has no user_ref; set --user-ref first")
+		return domain.PlainConfig{}, errors.New("host has no user_ref; set --user-ref first")
 	}
 
 	userCfg, ok := cfg.Users[targetRef]
 	if !ok {
-		return store.PlainConfig{}, fmt.Errorf("user profile %q not found", targetRef)
+		return domain.PlainConfig{}, fmt.Errorf("user profile %q not found", targetRef)
 	}
 
 	trimmedUser := strings.TrimSpace(userName)
 	if changedUser && trimmedUser == "" {
-		return store.PlainConfig{}, errors.New("--user cannot be empty")
+		return domain.PlainConfig{}, errors.New("--user cannot be empty")
 	}
 	if strings.TrimSpace(userCfg.Name) == "" {
-		return store.PlainConfig{}, fmt.Errorf("user profile %q has empty name", targetRef)
+		return domain.PlainConfig{}, fmt.Errorf("user profile %q has empty name", targetRef)
 	}
 
 	input := appusers.UpdateInput{
@@ -171,19 +171,19 @@ func updateLinkedUserProfileWithService(
 			changedPassword,
 		)
 		if err != nil {
-			return store.PlainConfig{}, err
+			return domain.PlainConfig{}, err
 		}
 		input.Auth = authUpdateFromConfig(newAuth)
 	}
 
 	out, err := appusers.Service{}.Update(input)
 	if err != nil {
-		return store.PlainConfig{}, err
+		return domain.PlainConfig{}, err
 	}
 	return out.Config, nil
 }
 
-func authUpdateFromConfig(auth store.AuthConfig) appusers.AuthUpdate {
+func authUpdateFromConfig(auth domain.AuthConfig) appusers.AuthUpdate {
 	update := appusers.AuthUpdate{
 		Type:        auth.Type,
 		TypeChanged: true,

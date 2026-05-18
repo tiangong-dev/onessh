@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	copyapp "onessh/internal/app/copy"
+	"onessh/internal/domain"
 	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -165,7 +165,7 @@ Use alias:path to specify a remote path:
 
 type copyIdentityResolver struct{}
 
-func (copyIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (copyIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
@@ -205,7 +205,7 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 	return arg[:idx], arg[idx+1:], true
 }
 
-func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string, ioStreams appruntime.IOStreams) error {
+func executeRemoteToRemoteCopy(ctx context.Context, cfg domain.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string, ioStreams appruntime.IOStreams) error {
 	srcAlias, srcPath, _ := splitCpArg(srcArg)
 	dstAlias, dstPath, _ := splitCpArg(dstArg)
 
@@ -230,7 +230,7 @@ func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcAr
 	return err
 }
 
-func executeSCP(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeSCP(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}

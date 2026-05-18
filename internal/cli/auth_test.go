@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestNormalizeAuthType(t *testing.T) {
@@ -31,13 +31,13 @@ func TestSummarizeAuth(t *testing.T) {
 
 	cases := []struct {
 		name string
-		auth store.AuthConfig
+		auth domain.AuthConfig
 		want string
 	}{
-		{name: "key with path", auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}, want: "key:~/.ssh/id_ed25519"},
-		{name: "key without path", auth: store.AuthConfig{Type: "key"}, want: "key"},
-		{name: "password", auth: store.AuthConfig{Type: "password"}, want: "password"},
-		{name: "unknown", auth: store.AuthConfig{Type: "oauth"}, want: "none"},
+		{name: "key with path", auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}, want: "key:~/.ssh/id_ed25519"},
+		{name: "key without path", auth: domain.AuthConfig{Type: "key"}, want: "key"},
+		{name: "password", auth: domain.AuthConfig{Type: "password"}, want: "password"},
+		{name: "unknown", auth: domain.AuthConfig{Type: "oauth"}, want: "none"},
 	}
 
 	for _, tc := range cases {
@@ -76,7 +76,7 @@ func TestAuthConfigFromFlags(t *testing.T) {
 func TestAuthConfigFromFlagValues(t *testing.T) {
 	t.Parallel()
 
-	current := store.AuthConfig{Type: "KEY", KeyPath: "~/.ssh/id_ed25519"}
+	current := domain.AuthConfig{Type: "KEY", KeyPath: "~/.ssh/id_ed25519"}
 
 	auth, err := authConfigFromFlagValues(current, "", "", "", false, false, false)
 	if err != nil {

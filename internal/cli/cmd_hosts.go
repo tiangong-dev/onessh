@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	apphosts "onessh/internal/app/hosts"
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -49,7 +49,7 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 				return errors.New("passwords do not match")
 			}
 
-			cfg := store.NewPlainConfig()
+			cfg := domain.NewPlainConfig()
 			if force {
 				if err := repo.SaveWithReset(cfg, pass1); err != nil {
 					return err

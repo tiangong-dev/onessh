@@ -7,14 +7,13 @@ import (
 
 	"onessh/internal/domain"
 	"onessh/internal/presenters"
-	"onessh/internal/store"
 
 	"gopkg.in/yaml.v3"
 )
 
 type hostListRow = presenters.HostListRow
 
-func buildHostListRows(cfg store.PlainConfig, aliases []string) []hostListRow {
+func buildHostListRows(cfg domain.PlainConfig, aliases []string) []hostListRow {
 	rows := make([]hostListRow, 0, len(aliases))
 	for _, alias := range aliases {
 		host := cfg.Hosts[alias]
@@ -60,10 +59,10 @@ func renderHostListTable(out io.Writer, rows []hostListRow) error {
 	return presenters.RenderHostListTable(out, rows)
 }
 
-func buildHostDumpConfig(cfg store.PlainConfig, alias string, host store.HostConfig) store.PlainConfig {
-	outCfg := store.PlainConfig{
-		Hosts: map[string]store.HostConfig{alias: host},
-		Users: map[string]store.UserConfig{},
+func buildHostDumpConfig(cfg domain.PlainConfig, alias string, host domain.HostConfig) domain.PlainConfig {
+	outCfg := domain.PlainConfig{
+		Hosts: map[string]domain.HostConfig{alias: host},
+		Users: map[string]domain.UserConfig{},
 	}
 	if host.UserRef != "" {
 		if u, ok := cfg.Users[host.UserRef]; ok {
@@ -73,7 +72,7 @@ func buildHostDumpConfig(cfg store.PlainConfig, alias string, host store.HostCon
 	return outCfg
 }
 
-func renderHostDetailsTable(out io.Writer, alias string, host store.HostConfig, cfg store.PlainConfig) {
+func renderHostDetailsTable(out io.Writer, alias string, host domain.HostConfig, cfg domain.PlainConfig) {
 	port := domain.EffectivePort(host.Port)
 
 	fmt.Fprintf(out, "Alias:        %s\n", alias)
@@ -125,7 +124,7 @@ func renderHostDetailsTable(out io.Writer, alias string, host store.HostConfig, 
 	}
 }
 
-func renderHostDetailsYAML(out io.Writer, cfg store.PlainConfig) error {
+func renderHostDetailsYAML(out io.Writer, cfg domain.PlainConfig) error {
 	outBytes, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal yaml: %w", err)

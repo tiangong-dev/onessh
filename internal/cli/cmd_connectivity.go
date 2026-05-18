@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	connectivityapp "onessh/internal/app/connectivity"
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
@@ -93,7 +93,7 @@ func newPingCmd(opts *rootOptions) *cobra.Command {
 
 type pingIdentityResolver struct{}
 
-func (pingIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (pingIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
@@ -103,7 +103,7 @@ func (pingRunner) Ping(ctx context.Context, req connectivityapp.Request) error {
 	return runSSHTest(ctx, req.Config, req.Host, req.UserName, req.Auth, req.Timeout.Seconds, req.Agent.Socket, req.Agent.Capability)
 }
 
-func runSSHTest(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
+func runSSHTest(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
 	args := []string{
 		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
 	}

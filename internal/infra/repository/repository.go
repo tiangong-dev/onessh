@@ -1,16 +1,19 @@
 package repository
 
-import "onessh/internal/store"
+import (
+	"onessh/internal/domain"
+	"onessh/internal/store"
+)
 
 var (
 	ErrConfigNotFound  = store.ErrConfigNotFound
 	ErrInvalidPassword = store.ErrInvalidPassword
 )
 
-type AuthConfig = store.AuthConfig
-type HostConfig = store.HostConfig
-type PlainConfig = store.PlainConfig
-type UserConfig = store.UserConfig
+type AuthConfig = domain.AuthConfig
+type HostConfig = domain.HostConfig
+type PlainConfig = domain.PlainConfig
+type UserConfig = domain.UserConfig
 
 // Repository is the infrastructure-facing facade over the existing encrypted store.
 type Repository struct {
@@ -22,7 +25,7 @@ func ResolvePath(customPath string) (string, error) {
 }
 
 func NewPlainConfig() PlainConfig {
-	return store.NewPlainConfig()
+	return domain.NewPlainConfig()
 }
 
 func (r Repository) Exists() bool {

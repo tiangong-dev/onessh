@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/manifoldco/promptui"
 	"golang.org/x/term"
 )
 
-func promptAuthConfig(reader *bufio.Reader, existing *store.AuthConfig) (store.AuthConfig, error) {
+func promptAuthConfig(reader *bufio.Reader, existing *domain.AuthConfig) (domain.AuthConfig, error) {
 	defaultType := "key"
 	defaultKeyPath := "~/.ssh/id_ed25519"
 	defaultPassword := ""
@@ -27,22 +27,22 @@ func promptAuthConfig(reader *bufio.Reader, existing *store.AuthConfig) (store.A
 
 	authType, err := promptAuthType(reader, defaultType)
 	if err != nil {
-		return store.AuthConfig{}, err
+		return domain.AuthConfig{}, err
 	}
 
-	auth := store.AuthConfig{Type: authType}
+	auth := domain.AuthConfig{Type: authType}
 	switch authType {
 	case "key":
 		keyPath, err := promptNonEmpty(reader, "Key path", defaultKeyPath)
 		if err != nil {
-			return store.AuthConfig{}, err
+			return domain.AuthConfig{}, err
 		}
 		auth.KeyPath = keyPath
 	case "password":
 		if existing != nil && defaultPassword != "" {
 			password, changed, err := promptOptionalSecret("Password (press Enter to keep current): ")
 			if err != nil {
-				return store.AuthConfig{}, err
+				return domain.AuthConfig{}, err
 			}
 			if changed {
 				auth.Password = string(password)
@@ -53,13 +53,13 @@ func promptAuthConfig(reader *bufio.Reader, existing *store.AuthConfig) (store.A
 		} else {
 			password, err := promptRequiredPassword("Password: ")
 			if err != nil {
-				return store.AuthConfig{}, err
+				return domain.AuthConfig{}, err
 			}
 			auth.Password = string(password)
 			wipe(password)
 		}
 	default:
-		return store.AuthConfig{}, fmt.Errorf("unsupported auth type: %s", authType)
+		return domain.AuthConfig{}, fmt.Errorf("unsupported auth type: %s", authType)
 	}
 
 	return auth, nil

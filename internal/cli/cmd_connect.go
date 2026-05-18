@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	connectapp "onessh/internal/app/connect"
+	"onessh/internal/domain"
 	infraagent "onessh/internal/infra/agent"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -84,7 +84,7 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 
 type connectIdentityResolver struct{}
 
-func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (connectIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
@@ -96,10 +96,10 @@ func (connectTransport) Connect(ctx context.Context, req connectapp.TransportReq
 
 func executeSSH(
 	ctx context.Context,
-	cfg store.PlainConfig,
-	host store.HostConfig,
+	cfg domain.PlainConfig,
+	host domain.HostConfig,
 	userName string,
-	auth store.AuthConfig,
+	auth domain.AuthConfig,
 	sshArgs []string,
 	stdin io.Reader,
 	stdout io.Writer,

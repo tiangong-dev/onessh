@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -44,7 +43,7 @@ func hasAnyHostUpdateFlags(cmd *cobra.Command) bool {
 
 func applyHostEnvUpdateFlags(
 	cmd *cobra.Command,
-	host *store.HostConfig,
+	host *domain.HostConfig,
 	envFlags, unsetEnv []string,
 	clearEnv bool,
 ) error {
@@ -90,7 +89,7 @@ func applyHostEnvUpdateFlags(
 
 func applyHostHookUpdateFlags(
 	cmd *cobra.Command,
-	host *store.HostConfig,
+	host *domain.HostConfig,
 	preConnect, postConnect []string,
 	clearPre, clearPost bool,
 ) error {
@@ -133,12 +132,12 @@ func applyHostHookUpdateFlags(
 
 func applyUserProfileUpdateFlags(
 	cmd *cobra.Command,
-	cfg *store.PlainConfig,
-	host *store.HostConfig,
+	cfg *domain.PlainConfig,
+	host *domain.HostConfig,
 	userRefFlag, userName, authTypeFlag, keyPath, password string,
 ) error {
 	if cfg.Users == nil {
-		cfg.Users = map[string]store.UserConfig{}
+		cfg.Users = map[string]domain.UserConfig{}
 	}
 
 	changedUserRef := cmd.Flags().Changed("user-ref")
@@ -205,7 +204,7 @@ func normalizeTags(tags []string) []string {
 	return domain.NormalizeTags(tags)
 }
 
-func applyHostTagUpdateFlags(cmd *cobra.Command, host *store.HostConfig, tags, unsetTags []string, clearTags bool) {
+func applyHostTagUpdateFlags(cmd *cobra.Command, host *domain.HostConfig, tags, unsetTags []string, clearTags bool) {
 	if !cmd.Flags().Changed("tag") && !cmd.Flags().Changed("untag") && !(cmd.Flags().Changed("clear-tags") && clearTags) {
 		return
 	}

@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"onessh/internal/domain"
 	"onessh/internal/infra/repository"
 	"onessh/internal/store"
 )
 
-func loadConfig(opts *rootOptions, repo repository.Repository) (store.PlainConfig, []byte, error) {
+func loadConfig(opts *rootOptions, repo repository.Repository) (domain.PlainConfig, []byte, error) {
 	cache, err := opts.passphraseStore(repo.Path)
 	if err != nil {
-		return store.PlainConfig{}, nil, err
+		return domain.PlainConfig{}, nil, err
 	}
 	if cachedPassphrase, ok, _ := cache.Get(); ok {
 		cfg, loadErr := repo.Load(cachedPassphrase)
@@ -26,22 +27,22 @@ func loadConfig(opts *rootOptions, repo repository.Repository) (store.PlainConfi
 			_ = cache.Clear()
 		} else {
 			wipe(cachedPassphrase)
-			return store.PlainConfig{}, nil, loadErr
+			return domain.PlainConfig{}, nil, loadErr
 		}
 	}
 
 	passphrase, err := promptRequiredPassword("Enter master password: ")
 	if err != nil {
-		return store.PlainConfig{}, nil, err
+		return domain.PlainConfig{}, nil, err
 	}
 
 	cfg, err := repo.Load(passphrase)
 	if err != nil {
 		wipe(passphrase)
 		if errors.Is(err, store.ErrConfigNotFound) {
-			return store.PlainConfig{}, nil, fmt.Errorf("%w (run `onessh init` first)", err)
+			return domain.PlainConfig{}, nil, fmt.Errorf("%w (run `onessh init` first)", err)
 		}
-		return store.PlainConfig{}, nil, err
+		return domain.PlainConfig{}, nil, err
 	}
 
 	if cache.IsEnabled() {
@@ -51,8 +52,8 @@ func loadConfig(opts *rootOptions, repo repository.Repository) (store.PlainConfi
 	return cfg, passphrase, nil
 }
 
-func redactConfigForDump(cfg store.PlainConfig) store.PlainConfig {
-	redacted := store.NewPlainConfig()
+func redactConfigForDump(cfg domain.PlainConfig) domain.PlainConfig {
+	redacted := domain.NewPlainConfig()
 
 	for alias, userCfg := range cfg.Users {
 		userCopy := userCfg

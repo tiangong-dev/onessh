@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestRenderHostDetailsTableRedactsEnv(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	host := store.HostConfig{
+	cfg := domain.NewPlainConfig()
+	host := domain.HostConfig{
 		Host: "1.2.3.4",
 		Port: 22,
 		Env: map[string]string{
@@ -41,15 +41,15 @@ func TestRenderHostDetailsTableRedactsEnv(t *testing.T) {
 func TestRedactConfigForDump(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "secret-pass",
 		},
 	}
-	cfg.Hosts["web1"] = store.HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,

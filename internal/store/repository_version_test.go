@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"onessh/internal/domain"
 )
 
 func TestRepositoryLoadUpgradesLegacyStoreMetadataVersion(t *testing.T) {
@@ -14,15 +16,15 @@ func TestRepositoryLoadUpgradesLegacyStoreMetadataVersion(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("correct-pass")
 
-	cfg := NewPlainConfig()
-	cfg.Users["ops"] = UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,
@@ -68,15 +70,15 @@ func TestRepositoryLoadRejectsStoreVersionTooOld(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("correct-pass")
 
-	cfg := NewPlainConfig()
-	cfg.Users["ops"] = UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,

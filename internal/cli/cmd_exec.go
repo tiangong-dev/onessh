@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	execapp "onessh/internal/app/exec"
+	"onessh/internal/domain"
 	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -99,7 +99,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 
 type execIdentityResolver struct{}
 
-func (execIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (execIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
@@ -109,7 +109,7 @@ func (execRemoteRunner) ExecRemote(ctx context.Context, req execapp.RemoteReques
 	return executeRemoteCmd(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
-func executeRemoteCmd(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}

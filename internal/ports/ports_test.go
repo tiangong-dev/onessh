@@ -3,20 +3,20 @@ package ports
 import (
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 type testIdentityResolver struct{}
 
-func (testIdentityResolver) ResolveHostIdentity(store.PlainConfig, store.HostConfig) (string, store.AuthConfig, error) {
-	return "alice", store.AuthConfig{Type: "key"}, nil
+func (testIdentityResolver) ResolveHostIdentity(domain.PlainConfig, domain.HostConfig) (string, domain.AuthConfig, error) {
+	return "alice", domain.AuthConfig{Type: "key"}, nil
 }
 
 func TestIdentityResolverPortShape(t *testing.T) {
 	t.Parallel()
 
 	var resolver IdentityResolver = testIdentityResolver{}
-	userName, auth, err := resolver.ResolveHostIdentity(store.PlainConfig{}, store.HostConfig{})
+	userName, auth, err := resolver.ResolveHostIdentity(domain.PlainConfig{}, domain.HostConfig{})
 	if err != nil {
 		t.Fatalf("ResolveHostIdentity returned error: %v", err)
 	}

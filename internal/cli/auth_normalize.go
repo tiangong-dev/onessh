@@ -4,14 +4,13 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/store"
 )
 
 func normalizeAuthType(input string) string {
 	return string(domain.NormalizeAuthType(input))
 }
 
-func summarizeAuth(auth store.AuthConfig) string {
+func summarizeAuth(auth domain.AuthConfig) string {
 	switch normalizeAuthType(auth.Type) {
 	case "key":
 		if strings.TrimSpace(auth.KeyPath) != "" {

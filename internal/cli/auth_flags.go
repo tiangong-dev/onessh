@@ -4,34 +4,34 @@ import (
 	"errors"
 	"strings"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
 
-func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, error) {
+func authConfigFromFlags(authType, keyPath, password string) (domain.AuthConfig, error) {
 	if strings.TrimSpace(keyPath) != "" && strings.TrimSpace(password) != "" {
-		return store.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
+		return domain.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
 	}
 
-	auth := store.AuthConfig{Type: authType}
+	auth := domain.AuthConfig{Type: authType}
 	switch authType {
 	case "key":
 		if strings.TrimSpace(password) != "" {
-			return store.AuthConfig{}, errors.New("--password is only valid when --auth-type=password")
+			return domain.AuthConfig{}, errors.New("--password is only valid when --auth-type=password")
 		}
 		if strings.TrimSpace(keyPath) == "" {
-			return store.AuthConfig{}, errors.New("key-path is required when auth-type=key")
+			return domain.AuthConfig{}, errors.New("key-path is required when auth-type=key")
 		}
 		auth.KeyPath = strings.TrimSpace(keyPath)
 	case "password":
 		if strings.TrimSpace(keyPath) != "" {
-			return store.AuthConfig{}, errors.New("--key-path is only valid when --auth-type=key")
+			return domain.AuthConfig{}, errors.New("--key-path is only valid when --auth-type=key")
 		}
 		if strings.TrimSpace(password) == "" {
 			prompted, err := promptRequiredPassword("SSH password: ")
 			if err != nil {
-				return store.AuthConfig{}, err
+				return domain.AuthConfig{}, err
 			}
 			auth.Password = string(prompted)
 			wipe(prompted)
@@ -39,24 +39,24 @@ func authConfigFromFlags(authType, keyPath, password string) (store.AuthConfig, 
 			auth.Password = password
 		}
 	default:
-		return store.AuthConfig{}, errors.New("auth-type must be key or password")
+		return domain.AuthConfig{}, errors.New("auth-type must be key or password")
 	}
 	return auth, nil
 }
 
 func authConfigFromFlagValues(
-	current store.AuthConfig,
+	current domain.AuthConfig,
 	authTypeFlag, keyPath, password string,
 	changedAuthType, changedKeyPath, changedPassword bool,
-) (store.AuthConfig, error) {
+) (domain.AuthConfig, error) {
 	if changedKeyPath && changedPassword {
-		return store.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
+		return domain.AuthConfig{}, errors.New("cannot set --key-path and --password at the same time")
 	}
 
 	if changedAuthType {
 		authType := normalizeAuthType(authTypeFlag)
 		if authType == "" {
-			return store.AuthConfig{}, errors.New("--auth-type must be key or password")
+			return domain.AuthConfig{}, errors.New("--auth-type must be key or password")
 		}
 		switch authType {
 		case "key":
@@ -65,9 +65,9 @@ func authConfigFromFlagValues(
 				path = strings.TrimSpace(current.KeyPath)
 			}
 			if path == "" {
-				return store.AuthConfig{}, errors.New("key auth requires --key-path or existing key path")
+				return domain.AuthConfig{}, errors.New("key auth requires --key-path or existing key path")
 			}
-			return store.AuthConfig{Type: "key", KeyPath: path}, nil
+			return domain.AuthConfig{Type: "key", KeyPath: path}, nil
 		case "password":
 			pw := password
 			if !changedPassword {
@@ -76,28 +76,28 @@ func authConfigFromFlagValues(
 			if strings.TrimSpace(pw) == "" {
 				prompted, err := promptRequiredPassword("SSH password: ")
 				if err != nil {
-					return store.AuthConfig{}, err
+					return domain.AuthConfig{}, err
 				}
 				pw = string(prompted)
 				wipe(prompted)
 			}
-			return store.AuthConfig{Type: "password", Password: pw}, nil
+			return domain.AuthConfig{Type: "password", Password: pw}, nil
 		}
 	}
 
 	if changedKeyPath {
 		path := strings.TrimSpace(keyPath)
 		if path == "" {
-			return store.AuthConfig{}, errors.New("--key-path cannot be empty")
+			return domain.AuthConfig{}, errors.New("--key-path cannot be empty")
 		}
-		return store.AuthConfig{Type: "key", KeyPath: path}, nil
+		return domain.AuthConfig{Type: "key", KeyPath: path}, nil
 	}
 
 	if changedPassword {
 		if strings.TrimSpace(password) == "" {
-			return store.AuthConfig{}, errors.New("--password cannot be empty")
+			return domain.AuthConfig{}, errors.New("--password cannot be empty")
 		}
-		return store.AuthConfig{Type: "password", Password: password}, nil
+		return domain.AuthConfig{Type: "password", Password: password}, nil
 	}
 
 	if normalized := normalizeAuthType(current.Type); normalized != "" {

@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestBuildSSHArgsUsesDefaultPort(t *testing.T) {
 	t.Parallel()
 
-	got, err := BuildSSHArgs(store.NewPlainConfig(), store.HostConfig{
+	got, err := BuildSSHArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host: "192.0.2.10",
-	}, "ubuntu", store.AuthConfig{Type: "key"}, []string{"-T"}, ArgsOptions{})
+	}, "ubuntu", domain.AuthConfig{Type: "key"}, []string{"-T"}, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -27,9 +27,9 @@ func TestBuildSSHArgsUsesDefaultPort(t *testing.T) {
 func TestBuildSCPArgsUsesDefaultPort(t *testing.T) {
 	t.Parallel()
 
-	got, err := BuildSCPArgs(store.NewPlainConfig(), store.HostConfig{
+	got, err := BuildSCPArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host: "192.0.2.10",
-	}, "ubuntu", store.AuthConfig{Type: "key"}, "/var/log/app.log", []string{"./app.log"}, false, false, ArgsOptions{})
+	}, "ubuntu", domain.AuthConfig{Type: "key"}, "/var/log/app.log", []string{"./app.log"}, false, false, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSCPArgs: %v", err)
 	}
@@ -43,10 +43,10 @@ func TestBuildSCPArgsUsesDefaultPort(t *testing.T) {
 func TestBuildSSHArgsIncludesKeyAuthIdentity(t *testing.T) {
 	t.Parallel()
 
-	got, err := BuildSSHArgs(store.NewPlainConfig(), store.HostConfig{
+	got, err := BuildSSHArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host: "example.com",
 		Port: 2222,
-	}, "deploy", store.AuthConfig{Type: "key", KeyPath: "/keys/deploy"}, nil, ArgsOptions{})
+	}, "deploy", domain.AuthConfig{Type: "key", KeyPath: "/keys/deploy"}, nil, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -60,9 +60,9 @@ func TestBuildSSHArgsIncludesKeyAuthIdentity(t *testing.T) {
 func TestBuildSSHArgsPasswordAuthDoesNotIncludeKeyArg(t *testing.T) {
 	t.Parallel()
 
-	got, err := BuildSSHArgs(store.NewPlainConfig(), store.HostConfig{
+	got, err := BuildSSHArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host: "example.com",
-	}, "deploy", store.AuthConfig{Type: "password", KeyPath: "/keys/ignored"}, nil, ArgsOptions{})
+	}, "deploy", domain.AuthConfig{Type: "password", KeyPath: "/keys/ignored"}, nil, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -79,10 +79,10 @@ func TestBuildSSHArgsPasswordAuthDoesNotIncludeKeyArg(t *testing.T) {
 func TestBuildSSHArgsRawProxyJump(t *testing.T) {
 	t.Parallel()
 
-	got, err := BuildSSHArgs(store.NewPlainConfig(), store.HostConfig{
+	got, err := BuildSSHArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host:      "app.internal",
 		ProxyJump: "jump@bastion.example:2200",
-	}, "deploy", store.AuthConfig{Type: "key"}, nil, ArgsOptions{})
+	}, "deploy", domain.AuthConfig{Type: "key"}, nil, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -96,21 +96,21 @@ func TestBuildSSHArgsRawProxyJump(t *testing.T) {
 func TestBuildSSHArgsAliasKeyProxyJump(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["jump-user"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["jump-user"] = domain.UserConfig{
 		Name: "jump",
-		Auth: store.AuthConfig{Type: "key"},
+		Auth: domain.AuthConfig{Type: "key"},
 	}
-	cfg.Hosts["bastion"] = store.HostConfig{
+	cfg.Hosts["bastion"] = domain.HostConfig{
 		Host:    "bastion.internal",
 		UserRef: "jump-user",
 		Port:    2200,
 	}
 
-	got, err := BuildSSHArgs(cfg, store.HostConfig{
+	got, err := BuildSSHArgs(cfg, domain.HostConfig{
 		Host:      "app.internal",
 		ProxyJump: "bastion",
-	}, "deploy", store.AuthConfig{Type: "key"}, nil, ArgsOptions{})
+	}, "deploy", domain.AuthConfig{Type: "key"}, nil, ArgsOptions{})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -124,20 +124,20 @@ func TestBuildSSHArgsAliasKeyProxyJump(t *testing.T) {
 func TestBuildSSHArgsAliasPasswordProxyJumpUsesOnesshProxyCommand(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["jump-user"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["jump-user"] = domain.UserConfig{
 		Name: "jump",
-		Auth: store.AuthConfig{Type: "password"},
+		Auth: domain.AuthConfig{Type: "password"},
 	}
-	cfg.Hosts["bastion"] = store.HostConfig{
+	cfg.Hosts["bastion"] = domain.HostConfig{
 		Host:    "bastion.internal",
 		UserRef: "jump-user",
 	}
 
-	got, err := BuildSSHArgs(cfg, store.HostConfig{
+	got, err := BuildSSHArgs(cfg, domain.HostConfig{
 		Host:      "app.internal",
 		ProxyJump: "bastion",
-	}, "deploy", store.AuthConfig{Type: "key"}, nil, ArgsOptions{OnesshPath: "/tmp/one ssh/onessh'bin"})
+	}, "deploy", domain.AuthConfig{Type: "key"}, nil, ArgsOptions{OnesshPath: "/tmp/one ssh/onessh'bin"})
 	if err != nil {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
@@ -152,9 +152,9 @@ func TestBuildSSHArgsAliasPasswordProxyJumpUsesOnesshProxyCommand(t *testing.T) 
 func TestBuildSSHArgsRejectsUnsupportedAuth(t *testing.T) {
 	t.Parallel()
 
-	_, err := BuildSSHArgs(store.NewPlainConfig(), store.HostConfig{
+	_, err := BuildSSHArgs(domain.NewPlainConfig(), domain.HostConfig{
 		Host: "example.com",
-	}, "deploy", store.AuthConfig{Type: "token"}, nil, ArgsOptions{})
+	}, "deploy", domain.AuthConfig{Type: "token"}, nil, ArgsOptions{})
 	if err == nil || !strings.Contains(err.Error(), "unsupported auth type") {
 		t.Fatalf("expected unsupported auth error, got %v", err)
 	}

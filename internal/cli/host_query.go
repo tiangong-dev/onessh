@@ -6,20 +6,19 @@ import (
 
 	"onessh/internal/domain"
 	"onessh/internal/presenters"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
 
-func hostHasTag(host store.HostConfig, tag string) bool {
+func hostHasTag(host domain.HostConfig, tag string) bool {
 	return domain.HostHasTag(host.Tags, tag)
 }
 
-func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) error {
+func printDryRunHosts(out io.Writer, cfg domain.PlainConfig, aliases []string) error {
 	return presenters.RenderDryRunHosts(out, buildDryRunHosts(cfg, aliases))
 }
 
-func buildDryRunHosts(cfg store.PlainConfig, aliases []string) []presenters.DryRunHost {
+func buildDryRunHosts(cfg domain.PlainConfig, aliases []string) []presenters.DryRunHost {
 	rows := make([]presenters.DryRunHost, 0, len(aliases))
 	for _, alias := range aliases {
 		host := cfg.Hosts[alias]
@@ -39,7 +38,7 @@ func buildDryRunHosts(cfg store.PlainConfig, aliases []string) []presenters.DryR
 	return rows
 }
 
-func collectFilteredHosts(cfg store.PlainConfig, tag, filter string) []string {
+func collectFilteredHosts(cfg domain.PlainConfig, tag, filter string) []string {
 	hosts := make(map[string]domain.HostQuery, len(cfg.Hosts))
 	for alias, host := range cfg.Hosts {
 		hosts[alias] = domain.HostQuery{
@@ -51,7 +50,7 @@ func collectFilteredHosts(cfg store.PlainConfig, tag, filter string) []string {
 	return domain.CollectFilteredHosts(hosts, tag, filter)
 }
 
-func matchHostFilter(alias string, host store.HostConfig, pattern string) bool {
+func matchHostFilter(alias string, host domain.HostConfig, pattern string) bool {
 	return domain.MatchHostFilter(alias, domain.HostQuery{
 		Address:     host.Host,
 		Description: host.Description,

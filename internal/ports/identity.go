@@ -1,8 +1,8 @@
 package ports
 
-import "onessh/internal/store"
+import "onessh/internal/domain"
 
 // IdentityResolver resolves the effective user and auth settings for a host.
 type IdentityResolver interface {
-	ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error)
+	ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error)
 }

@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"time"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRegisterAskPassTokenRejectsEmptyPassword(t *testing.T) {

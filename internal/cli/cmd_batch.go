@@ -8,9 +8,9 @@ import (
 	"os"
 
 	commonapp "onessh/internal/app/common"
+	"onessh/internal/domain"
 	"onessh/internal/ports"
 	"onessh/internal/presenters"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -18,9 +18,9 @@ import (
 
 type batchResult = commonapp.BatchResult
 
-type batchRunner func(ctx context.Context, alias string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult
+type batchRunner func(ctx context.Context, alias string, host domain.HostConfig, userName string, auth domain.AuthConfig) batchResult
 
-func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, parallel int, auditAction string, audit ports.Audit, fn batchRunner) bool {
+func runBatch(cmd *cobra.Command, cfg domain.PlainConfig, aliases []string, parallel int, auditAction string, audit ports.Audit, fn batchRunner) bool {
 	total := len(aliases)
 	progressOut := cmd.ErrOrStderr()
 	progressFile, hasProgressFile := progressOut.(*os.File)
@@ -70,26 +70,26 @@ func printBatchResults(out, errOut io.Writer, aliases []string, results []batchR
 
 type batchIdentityResolver struct{}
 
-func (batchIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (batchIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
-func runBatchPing(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
-	return runBatch(cmd, cfg, aliases, parallel, "ping", audit, func(ctx context.Context, _ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchPing(cmd *cobra.Command, cfg domain.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "ping", audit, func(ctx context.Context, _ string, host domain.HostConfig, userName string, auth domain.AuthConfig) batchResult {
 		return batchResult{Err: runSSHTest(ctx, cfg, host, userName, auth, timeout, agentSocket, agentCapability)}
 	})
 }
 
-func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
-	return runBatch(cmd, cfg, aliases, parallel, "exec", audit, func(ctx context.Context, _ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchExec(cmd *cobra.Command, cfg domain.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "exec", audit, func(ctx context.Context, _ string, host domain.HostConfig, userName string, auth domain.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
 		err := executeRemoteCmd(ctx, cfg, host, userName, auth, remoteCmd, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{Err: err, Stdout: outBuf.Bytes(), Stderr: errBuf.Bytes()}
 	})
 }
 
-func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
-	return runBatch(cmd, cfg, aliases, parallel, "cp", audit, func(ctx context.Context, _ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchCp(cmd *cobra.Command, cfg domain.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "cp", audit, func(ctx context.Context, _ string, host domain.HostConfig, userName string, auth domain.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
 		err := executeSCP(ctx, cfg, host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{Err: err, Stdout: outBuf.Bytes(), Stderr: errBuf.Bytes()}

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
@@ -51,7 +51,7 @@ func TestApplyHostEnvUpdateFlags(t *testing.T) {
 		t.Fatalf("set env: %v", err)
 	}
 
-	host := store.HostConfig{
+	host := domain.HostConfig{
 		Env: map[string]string{
 			"OLD": "value",
 		},
@@ -77,4 +77,3 @@ func TestAppendSendEnvOptions(t *testing.T) {
 		t.Fatalf("unexpected args: want=%v got=%v", want, args)
 	}
 }
-

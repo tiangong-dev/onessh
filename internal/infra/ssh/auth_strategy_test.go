@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestPasswordAuthStrategySkipsNonPasswordAuth(t *testing.T) {
@@ -32,7 +32,7 @@ func TestPasswordAuthStrategySkipsNonPasswordAuth(t *testing.T) {
 	got, err := strategy.ApplyPasswordAuth(PasswordAuthRequest{
 		Binary:     "ssh",
 		Args:       []string{"-p", "22", "deploy@example.com"},
-		Auth:       store.AuthConfig{Type: "key", Password: "ignored"},
+		Auth:       domain.AuthConfig{Type: "key", Password: "ignored"},
 		Env:        []string{"A=1"},
 		BaseBinary: "ssh",
 	})
@@ -93,7 +93,7 @@ func TestPasswordAuthStrategyUsesSSHPassWhenAvailable(t *testing.T) {
 	got, err := strategy.ApplyPasswordAuth(PasswordAuthRequest{
 		Binary:     "scp",
 		Args:       []string{"-P", "22", "file", "deploy@example.com:/tmp/file"},
-		Auth:       store.AuthConfig{Type: "password", Password: "secret"},
+		Auth:       domain.AuthConfig{Type: "password", Password: "secret"},
 		Env:        []string{"A=1"},
 		BaseBinary: "scp",
 	})
@@ -150,7 +150,7 @@ func TestPasswordAuthStrategyFallsBackToAskPassWhenSSHPassMissing(t *testing.T) 
 	got, err := strategy.ApplyPasswordAuth(PasswordAuthRequest{
 		Binary:          "ssh",
 		Args:            []string{"deploy@example.com"},
-		Auth:            store.AuthConfig{Type: "password", Password: "secret"},
+		Auth:            domain.AuthConfig{Type: "password", Password: "secret"},
 		Env:             []string{"A=1"},
 		AgentSocket:     "/tmp/agent.sock",
 		AgentCapability: "cap",

@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"onessh/internal/domain"
 	"onessh/internal/ports"
-	"onessh/internal/store"
 )
 
 func TestRunBatchPreservesAliasOrderWithParallelExecution(t *testing.T) {
 	t.Parallel()
 
 	cfg := testBatchConfig("first", "second", "third")
-	resolver := batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}}
+	resolver := batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}}
 	started := make(chan string, 3)
 	releases := map[string]chan struct{}{
 		"first":  make(chan struct{}),
@@ -90,7 +90,7 @@ func TestRunBatchParallelLessThanOneRunsSerially(t *testing.T) {
 	t.Parallel()
 
 	cfg := testBatchConfig("one", "two", "three")
-	resolver := batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}}
+	resolver := batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}}
 	started := make(chan string, 3)
 	release := make(chan struct{})
 	done := make(chan error, 1)
@@ -128,7 +128,7 @@ func TestRunBatchSkipsIdentityResolutionFailures(t *testing.T) {
 	wantErr := errors.New("missing identity")
 	resolver := batchResolver{
 		userName: "alice",
-		auth:     store.AuthConfig{Type: "key"},
+		auth:     domain.AuthConfig{Type: "key"},
 		errByHost: map[string]error{
 			"skip.example.com": wantErr,
 		},
@@ -164,7 +164,7 @@ func TestRunBatchReturnsFailureAndOutputStructure(t *testing.T) {
 		Config:           testBatchConfig("prod"),
 		Aliases:          []string{"prod"},
 		Parallel:         1,
-		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "password", Password: "secret"}},
+		IdentityResolver: batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "password", Password: "secret"}},
 		Runner: BatchRunnerFunc(func(_ context.Context, req BatchRequest) BatchResult {
 			if req.Alias != "prod" || req.Host.Host != "prod.example.com" || req.UserName != "alice" || req.Auth.Type != "password" {
 				t.Fatalf("unexpected request: %#v", req)
@@ -200,7 +200,7 @@ func TestRunBatchDoesNotWriteStdoutOrStderr(t *testing.T) {
 		Config:           testBatchConfig("prod"),
 		Aliases:          []string{"prod"},
 		Parallel:         1,
-		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner: BatchRunnerFunc(func(_ context.Context, _ BatchRequest) BatchResult {
 			return BatchResult{
 				Stdout: []byte("buffered stdout\n"),
@@ -234,7 +234,7 @@ func TestRunBatchAuditsPerHostSuccessFailureAndSkip(t *testing.T) {
 		Audit:       audit,
 		IdentityResolver: batchResolver{
 			userName: "alice",
-			auth:     store.AuthConfig{Type: "key"},
+			auth:     domain.AuthConfig{Type: "key"},
 			errByHost: map[string]error{
 				"skip.example.com": skipErr,
 			},
@@ -290,7 +290,7 @@ func TestRunBatchAuditIsOptionalAndNonBlocking(t *testing.T) {
 		Parallel:         1,
 		AuditAction:      "ping",
 		Audit:            &batchAudit{err: errors.New("audit unavailable")},
-		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner: BatchRunnerFunc(func(_ context.Context, _ BatchRequest) BatchResult {
 			return BatchResult{}
 		}),
@@ -304,7 +304,7 @@ func TestRunBatchAuditIsOptionalAndNonBlocking(t *testing.T) {
 		Aliases:          []string{"prod"},
 		Parallel:         1,
 		AuditAction:      "ping",
-		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: batchResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner: BatchRunnerFunc(func(_ context.Context, _ BatchRequest) BatchResult {
 			return BatchResult{}
 		}),
@@ -314,17 +314,17 @@ func TestRunBatchAuditIsOptionalAndNonBlocking(t *testing.T) {
 	}
 }
 
-func testBatchConfig(aliases ...string) store.PlainConfig {
-	cfg := store.NewPlainConfig()
+func testBatchConfig(aliases ...string) domain.PlainConfig {
+	cfg := domain.NewPlainConfig()
 	for _, alias := range aliases {
-		cfg.Hosts[alias] = store.HostConfig{
+		cfg.Hosts[alias] = domain.HostConfig{
 			Host:    alias + ".example.com",
 			UserRef: "alice",
 		}
 	}
-	cfg.Users["alice"] = store.UserConfig{
+	cfg.Users["alice"] = domain.UserConfig{
 		Name: "alice",
-		Auth: store.AuthConfig{Type: "key"},
+		Auth: domain.AuthConfig{Type: "key"},
 	}
 	return cfg
 }
@@ -347,13 +347,13 @@ func eventsByAlias(events []ports.AuditEvent) map[string]ports.AuditEvent {
 
 type batchResolver struct {
 	userName  string
-	auth      store.AuthConfig
+	auth      domain.AuthConfig
 	errByHost map[string]error
 }
 
-func (r batchResolver) ResolveHostIdentity(_ store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (r batchResolver) ResolveHostIdentity(_ domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	if err := r.errByHost[host.Host]; err != nil {
-		return "", store.AuthConfig{}, err
+		return "", domain.AuthConfig{}, err
 	}
 	return r.userName, r.auth, nil
 }
