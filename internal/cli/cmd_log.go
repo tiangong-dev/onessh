@@ -4,19 +4,19 @@ import (
 	"fmt"
 	"os/user"
 
-	"onessh/internal/audit"
+	"onessh/internal/infra/audit"
+	"onessh/internal/infra/repository"
 	"onessh/internal/presenters"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
 
-func (o *rootOptions) repository() (store.Repository, error) {
-	path, err := store.ResolvePath(o.dataPath)
+func (o *rootOptions) repository() (repository.Repository, error) {
+	path, err := repository.ResolvePath(o.dataPath)
 	if err != nil {
-		return store.Repository{}, err
+		return repository.Repository{}, err
 	}
-	return store.Repository{Path: path}, nil
+	return repository.Repository{Path: path}, nil
 }
 
 func (o *rootOptions) logEvent(action, alias, host, user, result string, err error) {

@@ -486,8 +486,13 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
+type masterPasswordRepository interface {
+	Load([]byte) (store.PlainConfig, error)
+	SaveWithReset(store.PlainConfig, []byte) error
+}
+
 func changeMasterPassword(
-	repo store.Repository,
+	repo masterPasswordRepository,
 	cache passphraseStore,
 	currentPassphrase, newPassphrase []byte,
 ) error {

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"onessh/internal/infra/repository"
 	"onessh/internal/store"
 )
 
-func loadConfig(opts *rootOptions, repo store.Repository) (store.PlainConfig, []byte, error) {
+func loadConfig(opts *rootOptions, repo repository.Repository) (store.PlainConfig, []byte, error) {
 	cache, err := opts.passphraseStore(repo.Path)
 	if err != nil {
 		return store.PlainConfig{}, nil, err
