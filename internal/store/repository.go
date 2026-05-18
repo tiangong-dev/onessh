@@ -7,7 +7,6 @@ import (
 	"regexp"
 
 	"onessh/internal/domain"
-	appruntime "onessh/internal/runtime"
 )
 
 var (
@@ -74,7 +73,7 @@ func ResolvePath(customPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return appruntime.ResolveDataPath(customPath, os.Getenv("ONESSH_DATA"), homeDir)
+	return ResolveDataPath(customPath, os.Getenv("ONESSH_DATA"), homeDir)
 }
 
 func (r Repository) Exists() bool {

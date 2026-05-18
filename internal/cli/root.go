@@ -3,7 +3,7 @@ package cli
 import (
 	"time"
 
-	"onessh/internal/infra/audit"
+	"onessh/internal/audit"
 	"onessh/internal/ports"
 
 	"github.com/spf13/cobra"

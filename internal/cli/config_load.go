@@ -6,11 +6,10 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/infra/repository"
 	"onessh/internal/store"
 )
 
-func loadConfig(opts *rootOptions, repo repository.Repository) (domain.PlainConfig, []byte, error) {
+func loadConfig(opts *rootOptions, repo store.Repository) (domain.PlainConfig, []byte, error) {
 	cache, err := opts.passphraseStore(repo.Path)
 	if err != nil {
 		return domain.PlainConfig{}, nil, err
