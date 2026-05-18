@@ -8,6 +8,7 @@ import (
 	"os"
 
 	commonapp "onessh/internal/app/common"
+	"onessh/internal/ports"
 	"onessh/internal/presenters"
 	"onessh/internal/store"
 
@@ -19,7 +20,7 @@ type batchResult = commonapp.BatchResult
 
 type batchRunner func(alias string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult
 
-func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, parallel int, fn batchRunner) bool {
+func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, parallel int, auditAction string, audit ports.Audit, fn batchRunner) bool {
 	total := len(aliases)
 	progressOut := cmd.ErrOrStderr()
 	progressFile, hasProgressFile := progressOut.(*os.File)
@@ -29,6 +30,8 @@ func runBatch(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, paral
 		Config:           cfg,
 		Aliases:          aliases,
 		Parallel:         parallel,
+		AuditAction:      auditAction,
+		Audit:            audit,
 		IdentityResolver: batchIdentityResolver{},
 		Runner: commonapp.BatchRunnerFunc(func(_ context.Context, req commonapp.BatchRequest) commonapp.BatchResult {
 			return fn(req.Alias, req.Host, req.UserName, req.Auth)
@@ -71,22 +74,22 @@ func (batchIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host sto
 	return resolveHostIdentity(cfg, host)
 }
 
-func runBatchPing(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string) bool {
-	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchPing(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, timeout, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "ping", audit, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		return batchResult{Err: runSSHTest(cfg, host, userName, auth, timeout, agentSocket, agentCapability)}
 	})
 }
 
-func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string) bool {
-	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchExec(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remoteCmd []string, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "exec", audit, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
 		err := executeRemoteCmd(cfg, host, userName, auth, remoteCmd, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{Err: err, Stdout: outBuf.Bytes(), Stderr: errBuf.Bytes()}
 	})
 }
 
-func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string) bool {
-	return runBatch(cmd, cfg, aliases, parallel, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
+func runBatchCp(cmd *cobra.Command, cfg store.PlainConfig, aliases []string, remotePath string, localPaths []string, recursive bool, parallel int, agentSocket, agentCapability string, audit ports.Audit) bool {
+	return runBatch(cmd, cfg, aliases, parallel, "cp", audit, func(_ string, host store.HostConfig, userName string, auth store.AuthConfig) batchResult {
 		var outBuf, errBuf bytes.Buffer
 		err := executeSCP(cfg, host, userName, auth, remotePath, localPaths, true, recursive, agentSocket, agentCapability, &outBuf, &errBuf)
 		return batchResult{Err: err, Stdout: outBuf.Bytes(), Stderr: errBuf.Bytes()}

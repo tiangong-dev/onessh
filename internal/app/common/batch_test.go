@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"onessh/internal/ports"
 	"onessh/internal/store"
 )
 
@@ -220,6 +221,99 @@ func TestRunBatchDoesNotWriteStdoutOrStderr(t *testing.T) {
 	}
 }
 
+func TestRunBatchAuditsPerHostSuccessFailureAndSkip(t *testing.T) {
+	runErr := errors.New("ssh failed")
+	skipErr := errors.New("missing identity")
+	audit := &batchAudit{}
+
+	results, err := RunBatch(context.Background(), BatchInput{
+		Config:      testBatchConfig("ok", "fail", "skip"),
+		Aliases:     []string{"ok", "fail", "skip"},
+		Parallel:    3,
+		AuditAction: "exec",
+		Audit:       audit,
+		IdentityResolver: batchResolver{
+			userName: "alice",
+			auth:     store.AuthConfig{Type: "key"},
+			errByHost: map[string]error{
+				"skip.example.com": skipErr,
+			},
+		},
+		Runner: BatchRunnerFunc(func(_ context.Context, req BatchRequest) BatchResult {
+			if req.Alias == "fail" {
+				return BatchResult{Err: runErr}
+			}
+			return BatchResult{}
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("results = %d, want 3", len(results))
+	}
+
+	got := eventsByAlias(audit.Events())
+	want := map[string]ports.AuditEvent{
+		"ok": {
+			Action: "exec",
+			Alias:  "ok",
+			Host:   "ok.example.com",
+			User:   "alice",
+			Result: "ok",
+		},
+		"fail": {
+			Action: "exec",
+			Alias:  "fail",
+			Host:   "fail.example.com",
+			User:   "alice",
+			Result: "fail",
+			Error:  "ssh failed",
+		},
+		"skip": {
+			Action: "exec",
+			Alias:  "skip",
+			Host:   "skip.example.com",
+			Result: "skip",
+			Error:  "missing identity",
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("audit events = %#v, want %#v", got, want)
+	}
+}
+
+func TestRunBatchAuditIsOptionalAndNonBlocking(t *testing.T) {
+	_, err := RunBatch(context.Background(), BatchInput{
+		Config:           testBatchConfig("prod"),
+		Aliases:          []string{"prod"},
+		Parallel:         1,
+		AuditAction:      "ping",
+		Audit:            &batchAudit{err: errors.New("audit unavailable")},
+		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		Runner: BatchRunnerFunc(func(_ context.Context, _ BatchRequest) BatchResult {
+			return BatchResult{}
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunBatch with failing audit: %v", err)
+	}
+
+	_, err = RunBatch(context.Background(), BatchInput{
+		Config:           testBatchConfig("prod"),
+		Aliases:          []string{"prod"},
+		Parallel:         1,
+		AuditAction:      "ping",
+		IdentityResolver: batchResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		Runner: BatchRunnerFunc(func(_ context.Context, _ BatchRequest) BatchResult {
+			return BatchResult{}
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunBatch with nil audit: %v", err)
+	}
+}
+
 func testBatchConfig(aliases ...string) store.PlainConfig {
 	cfg := store.NewPlainConfig()
 	for _, alias := range aliases {
@@ -243,6 +337,14 @@ func resultAliases(results []BatchResult) []string {
 	return aliases
 }
 
+func eventsByAlias(events []ports.AuditEvent) map[string]ports.AuditEvent {
+	byAlias := make(map[string]ports.AuditEvent, len(events))
+	for _, event := range events {
+		byAlias[event.Alias] = event
+	}
+	return byAlias
+}
+
 type batchResolver struct {
 	userName  string
 	auth      store.AuthConfig
@@ -254,6 +356,25 @@ func (r batchResolver) ResolveHostIdentity(_ store.PlainConfig, host store.HostC
 		return "", store.AuthConfig{}, err
 	}
 	return r.userName, r.auth, nil
+}
+
+type batchAudit struct {
+	mu     sync.Mutex
+	events []ports.AuditEvent
+	err    error
+}
+
+func (b *batchAudit) Log(event ports.AuditEvent) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, event)
+	return b.err
+}
+
+func (b *batchAudit) Events() []ports.AuditEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]ports.AuditEvent{}, b.events...)
 }
 
 func captureFileDescriptor(t *testing.T, target **os.File) func() string {

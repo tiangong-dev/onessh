@@ -46,7 +46,7 @@ func newPingCmd(opts *rootOptions) *cobra.Command {
 					return printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
 				}
 
-				anyFailed := runBatchPing(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability)
+				anyFailed := runBatchPing(cmd, cfg, aliases, timeout, parallel, opts.agentSocket, opts.agentCapability, opts.auditSink())
 				if anyFailed {
 					return errors.New("one or more hosts failed connectivity check")
 				}

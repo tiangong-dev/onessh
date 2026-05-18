@@ -52,7 +52,7 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 					return presenters.RenderDryRunCommand(cmd.OutOrStdout(), args)
 				}
 
-				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability)
+				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability, opts.auditSink())
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}

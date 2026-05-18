@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"onessh/internal/ports"
 	"onessh/internal/store"
 )
 
@@ -27,6 +28,8 @@ type BatchInput struct {
 	Config           store.PlainConfig
 	Aliases          []string
 	Parallel         int
+	AuditAction      string
+	Audit            ports.Audit
 	IdentityResolver BatchIdentityResolver
 	Runner           BatchRunner
 	OnProgress       func(completed, total int)
@@ -83,6 +86,7 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 			if err != nil {
 				result.Skip = true
 				result.Err = err
+				recordBatchAudit(input, alias, host, "", "skip", err)
 			} else {
 				result = input.Runner.RunBatchHost(ctx, BatchRequest{
 					Alias:    alias,
@@ -92,6 +96,7 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 				})
 				result.Alias = alias
 				result.Host = host
+				recordBatchRunAudit(input, result, userName)
 			}
 			results[i] = result
 
@@ -104,4 +109,21 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 	wg.Wait()
 
 	return results, nil
+}
+
+func recordBatchRunAudit(input BatchInput, result BatchResult, userName string) {
+	status := "ok"
+	if result.Skip {
+		status = "skip"
+	} else if result.Err != nil {
+		status = "fail"
+	}
+	recordBatchAudit(input, result.Alias, result.Host, userName, status, result.Err)
+}
+
+func recordBatchAudit(input BatchInput, alias string, host store.HostConfig, userName, result string, err error) {
+	if input.Audit == nil || input.AuditAction == "" {
+		return
+	}
+	RecordAuditStatus(input.Audit, input.AuditAction, alias, host.Host, userName, result, err)
 }

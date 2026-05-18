@@ -74,7 +74,7 @@ Use alias:path to specify a remote path:
 					return presenters.RenderDryRunUpload(cmd.OutOrStdout(), batchLocalPaths, batchRemotePath)
 				}
 
-				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket, opts.agentCapability)
+				anyFailed := runBatchCp(cmd, cfg, aliases, batchRemotePath, batchLocalPaths, recursive, parallel, opts.agentSocket, opts.agentCapability, opts.auditSink())
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
