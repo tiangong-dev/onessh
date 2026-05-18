@@ -5,20 +5,20 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestServiceAddHostNormalizesTagsAndEnv(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
 
 	out, err := service.Add(AddInput{
 		Config: cfg,
 		Alias:  " prod ",
-		Host: store.HostConfig{
+		Host: domain.HostConfig{
 			Host:    " prod.example.com ",
 			UserRef: "alice",
 			Port:    2222,
@@ -46,9 +46,9 @@ func TestServiceUpdateHostAppliesTagsAndEnv(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
-	cfg.Hosts["prod"] = store.HostConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["prod"] = domain.HostConfig{
 		Host:    "prod.example.com",
 		UserRef: "alice",
 		Tags:    []string{"legacy", "prod"},
@@ -84,9 +84,9 @@ func TestServiceUpdateHostAppliesHooks(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
-	cfg.Hosts["prod"] = store.HostConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["prod"] = domain.HostConfig{
 		Host:        "prod.example.com",
 		UserRef:     "alice",
 		PreConnect:  []string{"legacy pre"},
@@ -119,9 +119,9 @@ func TestServiceUpdateHostRejectsInvalidEnv(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
-	cfg.Hosts["prod"] = store.HostConfig{Host: "prod.example.com", UserRef: "alice"}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["prod"] = domain.HostConfig{Host: "prod.example.com", UserRef: "alice"}
 
 	_, err := service.Update(UpdateInput{
 		Config:     cfg,
@@ -138,8 +138,8 @@ func TestServiceRemoveHostDeletesEntry(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Hosts["prod"] = store.HostConfig{Host: "prod.example.com"}
+	cfg := domain.NewPlainConfig()
+	cfg.Hosts["prod"] = domain.HostConfig{Host: "prod.example.com"}
 
 	out, err := service.Remove(RemoveInput{Config: cfg, Alias: "prod"})
 	if err != nil {

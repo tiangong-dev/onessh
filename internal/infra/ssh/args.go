@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/store"
 )
 
 // ArgsOptions contains dependencies needed while constructing SSH arguments.
@@ -19,7 +18,7 @@ type ArgsOptions struct {
 }
 
 // Destination builds the ssh/scp destination from the host and resolved user.
-func Destination(host store.HostConfig, userName string) string {
+func Destination(host domain.HostConfig, userName string) string {
 	destination := host.Host
 	if userName != "" {
 		destination = fmt.Sprintf("%s@%s", userName, host.Host)
@@ -28,7 +27,7 @@ func Destination(host store.HostConfig, userName string) string {
 }
 
 // BuildSSHFlags builds the SSH option flags without the destination.
-func BuildSSHFlags(cfg store.PlainConfig, host store.HostConfig, auth store.AuthConfig, extra []string, opts ArgsOptions) ([]string, error) {
+func BuildSSHFlags(cfg domain.PlainConfig, host domain.HostConfig, auth domain.AuthConfig, extra []string, opts ArgsOptions) ([]string, error) {
 	args, err := applySSHCommonArgs(nil, cfg, host, "-p", opts)
 	if err != nil {
 		return nil, err
@@ -43,7 +42,7 @@ func BuildSSHFlags(cfg store.PlainConfig, host store.HostConfig, auth store.Auth
 }
 
 // BuildSSHArgs builds the full SSH argument list including the destination.
-func BuildSSHArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, extra []string, opts ArgsOptions) ([]string, error) {
+func BuildSSHArgs(cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, extra []string, opts ArgsOptions) ([]string, error) {
 	args, err := BuildSSHFlags(cfg, host, auth, extra, opts)
 	if err != nil {
 		return nil, err
@@ -53,7 +52,7 @@ func BuildSSHArgs(cfg store.PlainConfig, host store.HostConfig, userName string,
 }
 
 // BuildSCPArgs builds the full SCP argument list for uploads and downloads.
-func BuildSCPArgs(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, opts ArgsOptions) ([]string, error) {
+func BuildSCPArgs(cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, opts ArgsOptions) ([]string, error) {
 	args, err := applySSHCommonArgs(nil, cfg, host, "-P", opts)
 	if err != nil {
 		return nil, err
@@ -86,7 +85,7 @@ func (opts ArgsOptions) resolveOnesshPath() (string, error) {
 	return "", errors.New("onessh path is required for password proxy jump")
 }
 
-func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostConfig, portFlag string, opts ArgsOptions) ([]string, error) {
+func applySSHCommonArgs(args []string, cfg domain.PlainConfig, host domain.HostConfig, portFlag string, opts ArgsOptions) ([]string, error) {
 	port := domain.EffectivePort(host.Port)
 	args = append(args, portFlag, strconv.Itoa(port))
 	if host.ProxyJump != "" {
@@ -99,7 +98,7 @@ func applySSHCommonArgs(args []string, cfg store.PlainConfig, host store.HostCon
 	return args, nil
 }
 
-func applyKeyAuthArg(args []string, auth store.AuthConfig) ([]string, error) {
+func applyKeyAuthArg(args []string, auth domain.AuthConfig) ([]string, error) {
 	switch domain.NormalizeAuthType(auth.Type) {
 	case domain.AuthTypeKey:
 		if auth.KeyPath == "" {

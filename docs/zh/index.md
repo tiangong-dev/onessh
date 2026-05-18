@@ -32,7 +32,7 @@ features:
 
 | 章节 | 内容 |
 | --- | --- |
-| [指南](/zh/guide/getting-started) | 安装、首台主机、命令表、配置说明 |
+| [指南](/zh/guide/getting-started) | 安装、命令表、配置说明 |
 | [参考](/zh/reference/) | 架构与安全设计（深度） |
 
 命令与批量操作示例见仓库中的 [README.zh-CN](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md)（长文备用）。

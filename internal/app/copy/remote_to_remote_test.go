@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/domain"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 )
 
 func TestRemoteToRemoteCopySourceMissing(t *testing.T) {
@@ -292,13 +292,13 @@ func TestRemoteToRemoteCopySuccessPath(t *testing.T) {
 	}
 }
 
-func remoteToRemoteConfig() store.PlainConfig {
-	return store.PlainConfig{
-		Users: map[string]store.UserConfig{
-			"alice": {Name: "alice", Auth: store.AuthConfig{Type: "key"}},
-			"bob":   {Name: "bob", Auth: store.AuthConfig{Type: "key"}},
+func remoteToRemoteConfig() domain.PlainConfig {
+	return domain.PlainConfig{
+		Users: map[string]domain.UserConfig{
+			"alice": {Name: "alice", Auth: domain.AuthConfig{Type: "key"}},
+			"bob":   {Name: "bob", Auth: domain.AuthConfig{Type: "key"}},
 		},
-		Hosts: map[string]store.HostConfig{
+		Hosts: map[string]domain.HostConfig{
 			"prod": {
 				Host:    "prod.example.com",
 				UserRef: "alice",
@@ -315,9 +315,9 @@ type remoteToRemoteResolver struct {
 	errByHost map[string]error
 }
 
-func (r *remoteToRemoteResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (r *remoteToRemoteResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	if err := r.errByHost[host.Host]; err != nil {
-		return "", store.AuthConfig{}, err
+		return "", domain.AuthConfig{}, err
 	}
 	userCfg := cfg.Users[host.UserRef]
 	return userCfg.Name, userCfg.Auth, nil

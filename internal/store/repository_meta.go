@@ -6,10 +6,12 @@ import (
 	"os"
 	"strings"
 
+	"onessh/internal/domain"
+
 	"gopkg.in/yaml.v3"
 )
 
-func validateHostUserRefs(cfg PlainConfig) error {
+func validateHostUserRefs(cfg domain.PlainConfig) error {
 	for hostAlias, hostCfg := range cfg.Hosts {
 		if strings.TrimSpace(hostCfg.UserRef) == "" {
 			return fmt.Errorf("host %q has empty user_ref", hostAlias)

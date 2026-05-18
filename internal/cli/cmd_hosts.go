@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	apphosts "onessh/internal/app/hosts"
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -49,7 +49,7 @@ func newInitCmd(opts *rootOptions) *cobra.Command {
 				return errors.New("passwords do not match")
 			}
 
-			cfg := store.NewPlainConfig()
+			cfg := domain.NewPlainConfig()
 			if force {
 				if err := repo.SaveWithReset(cfg, pass1); err != nil {
 					return err
@@ -202,6 +202,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 			if alias == "" {
 				return errors.New("host alias cannot be empty")
 			}
+			warnIfPasswordFlagInsecure(cmd, passwordFlag)
 
 			repo, err := opts.repository()
 			if err != nil {
@@ -311,7 +312,7 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&userFlag, "user", "", "Update linked user profile name")
 	cmd.Flags().StringVar(&authTypeFlag, "auth-type", "", "Update linked user auth type (key|password)")
 	cmd.Flags().StringVar(&keyPathFlag, "key-path", "", "Update linked user key path")
-	cmd.Flags().StringVar(&passwordFlag, "password", "", "Update linked user password")
+	cmd.Flags().StringVar(&passwordFlag, "password", "", hostsPasswordFlagHelp)
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "Set host env entry (KEY=VALUE), repeatable")
 	cmd.Flags().StringArrayVar(&unsetEnv, "unset-env", nil, "Remove host env entry by key, repeatable")
 	cmd.Flags().BoolVar(&clearEnv, "clear-env", false, "Remove all host env entries")

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestNormalizeUserAlias(t *testing.T) {
@@ -27,7 +27,7 @@ func TestNormalizeUserAlias(t *testing.T) {
 func TestSortedUserAliases(t *testing.T) {
 	t.Parallel()
 
-	users := map[string]store.UserConfig{
+	users := map[string]domain.UserConfig{
 		"ops":  {Name: "ubuntu"},
 		"dev":  {Name: "debian"},
 		"root": {Name: "root"},
@@ -43,7 +43,7 @@ func TestSortedUserAliases(t *testing.T) {
 func TestFindUserAliasByName(t *testing.T) {
 	t.Parallel()
 
-	users := map[string]store.UserConfig{
+	users := map[string]domain.UserConfig{
 		"ops": {Name: "Ubuntu"},
 		"dev": {Name: "debian"},
 	}

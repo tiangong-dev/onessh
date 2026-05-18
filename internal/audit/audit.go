@@ -43,15 +43,16 @@ func Open(dataPath string, cfg RotateConfig) (*Logger, error) {
 		return nil, fmt.Errorf("create audit log directory: %w", err)
 	}
 
+	// lumberjack lazily creates the log file on first write with mode 0600
+	// (see lumberjack.Logger.openNew), so no explicit Chmod is needed here.
+	// An os.Chmod call before first write would silently no-op via ErrNotExist
+	// and be misleading.
 	w := &lumberjack.Logger{
 		Filename:   logPath,
 		MaxSize:    cfg.MaxSizeMB,
 		MaxBackups: cfg.MaxBackups,
 		MaxAge:     cfg.MaxAgeDays,
 		Compress:   cfg.Compress,
-	}
-	if err := os.Chmod(logPath, 0o600); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("chmod audit log: %w", err)
 	}
 
 	hostname := "-"

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	connectapp "onessh/internal/app/connect"
+	"onessh/internal/domain"
 	infraagent "onessh/internal/infra/agent"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -84,28 +84,29 @@ func runConnect(cmd *cobra.Command, opts *rootOptions, alias string, sshArgs []s
 
 type connectIdentityResolver struct{}
 
-func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (connectIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
 type connectTransport struct{}
 
-func (connectTransport) Connect(_ context.Context, req connectapp.TransportRequest) error {
-	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.Stdin, req.Stdout, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
+func (connectTransport) Connect(ctx context.Context, req connectapp.TransportRequest) error {
+	return executeSSH(ctx, req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.Stdin, req.Stdout, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
 }
 
 func executeSSH(
-	cfg store.PlainConfig,
-	host store.HostConfig,
+	ctx context.Context,
+	cfg domain.PlainConfig,
+	host domain.HostConfig,
 	userName string,
-	auth store.AuthConfig,
+	auth domain.AuthConfig,
 	sshArgs []string,
 	stdin io.Reader,
 	stdout io.Writer,
 	errOut io.Writer,
 	agentSocket string,
 	agentCapability string,
-) error {
+) (retErr error) {
 	if stdin == nil {
 		stdin = os.Stdin
 	}
@@ -143,8 +144,12 @@ func executeSSH(
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, stdin, stdout, errOut)
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
+	return runExternalCommand(ctx, binary, args, env, extraFiles, stdin, stdout, errOut)
 }
 
 func buildRemoteHookCommand(preConnect, postConnect []string) string {
@@ -154,11 +159,17 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 		return ""
 	}
 
-	lines := make([]string, 0, len(preparedPre)+len(preparedPost)+5)
+	// set -e protects PreConnect commands (any failure aborts before opening the shell).
+	// We disable it around the interactive shell so that a non-zero exit code from the
+	// user's shell does not skip PostConnect — `set -e` would otherwise terminate the
+	// outer script at the `${SHELL} -i` line and never reach PostConnect.
+	lines := make([]string, 0, len(preparedPre)+len(preparedPost)+7)
 	lines = append(lines, "set -e")
 	lines = append(lines, preparedPre...)
+	lines = append(lines, "set +e")
 	lines = append(lines, "${SHELL:-/bin/sh} -i")
 	lines = append(lines, "onessh_status=$?")
+	lines = append(lines, "set -e")
 	lines = append(lines, preparedPost...)
 	lines = append(lines, "exit $onessh_status")
 
@@ -166,6 +177,6 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 	return "sh -lc " + shellSingleQuote(script)
 }
 
-func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
+func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func() error, error) {
 	return infraagent.PrepareAskPassEnv(agentSocket, agentCapability, password)
 }

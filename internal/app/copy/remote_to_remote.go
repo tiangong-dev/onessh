@@ -13,7 +13,6 @@ import (
 
 	"onessh/internal/domain"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 )
 
 type RemoteToRemoteRunner interface {
@@ -47,7 +46,7 @@ type RemoteToRemoteService struct {
 }
 
 type RemoteToRemoteInput struct {
-	Config           store.PlainConfig
+	Config           domain.PlainConfig
 	SourceAlias      string
 	SourcePath       string
 	DestinationAlias string
@@ -72,10 +71,10 @@ type RemoteToRemoteOutput struct {
 
 type RemoteTransferRequest struct {
 	Alias      string
-	Config     store.PlainConfig
-	Host       store.HostConfig
+	Config     domain.PlainConfig
+	Host       domain.HostConfig
 	UserName   string
-	Auth       store.AuthConfig
+	Auth       domain.AuthConfig
 	RemotePath string
 	LocalPaths []string
 	IsUpload   bool
@@ -193,7 +192,7 @@ func (s RemoteToRemoteService) Copy(ctx context.Context, input RemoteToRemoteInp
 	return out, nil
 }
 
-func endpointOutput(alias string, host store.HostConfig, userName string) RemoteEndpointOutput {
+func endpointOutput(alias string, host domain.HostConfig, userName string) RemoteEndpointOutput {
 	out := RemoteEndpointOutput{
 		Alias:         alias,
 		Host:          host.Host,

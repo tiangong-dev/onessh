@@ -4,6 +4,8 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"onessh/internal/domain"
 )
 
 func TestRepositorySaveReturnsLockConflictWhenWriterHoldsLock(t *testing.T) {
@@ -64,16 +66,16 @@ func TestRepositorySaveWithResetReturnsLockConflictWhenWriterHoldsLock(t *testin
 	}
 }
 
-func validTestConfig() PlainConfig {
-	cfg := NewPlainConfig()
-	cfg.Users["ops"] = UserConfig{
+func validTestConfig() domain.PlainConfig {
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,

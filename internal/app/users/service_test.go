@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestServiceAddUserNormalizesAliasAndAuth(t *testing.T) {
@@ -13,7 +13,7 @@ func TestServiceAddUserNormalizesAliasAndAuth(t *testing.T) {
 
 	service := Service{}
 	out, err := service.Add(AddInput{
-		Config: store.NewPlainConfig(),
+		Config: domain.NewPlainConfig(),
 		Alias:  " Alice_Admin ",
 		Name:   " alice ",
 		Auth: AuthInput{
@@ -29,7 +29,7 @@ func TestServiceAddUserNormalizesAliasAndAuth(t *testing.T) {
 	if !exists {
 		t.Fatalf("normalized user alias not found: %#v", out.Config.Users)
 	}
-	want := store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	want := domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("user = %#v, want %#v", got, want)
 	}
@@ -39,10 +39,10 @@ func TestServiceUpdateUserAuth(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{
 		Name: "alice",
-		Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
+		Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
 	}
 
 	out, err := service.Update(UpdateInput{
@@ -60,7 +60,7 @@ func TestServiceUpdateUserAuth(t *testing.T) {
 	}
 
 	got := out.Config.Users["alice"].Auth
-	want := store.AuthConfig{Type: "password", Password: "secret"}
+	want := domain.AuthConfig{Type: "password", Password: "secret"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("auth = %#v, want %#v", got, want)
 	}
@@ -70,10 +70,10 @@ func TestServiceUpdateUserAuthRejectsMissingPassword(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{
 		Name: "alice",
-		Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
+		Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
 	}
 
 	_, err := service.Update(UpdateInput{
@@ -93,9 +93,9 @@ func TestServiceRemoveUserReferencedByHostReturnsError(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key"}}
-	cfg.Hosts["prod"] = store.HostConfig{Host: "prod.example.com", UserRef: "alice"}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key"}}
+	cfg.Hosts["prod"] = domain.HostConfig{Host: "prod.example.com", UserRef: "alice"}
 
 	_, err := service.Remove(RemoveInput{Config: cfg, Alias: "alice"})
 	if err == nil || !strings.Contains(err.Error(), `user profile "alice" is used by host(s): prod`) {
@@ -110,8 +110,8 @@ func TestServiceRemoveUserDeletesUnreferencedProfile(t *testing.T) {
 	t.Parallel()
 
 	service := Service{}
-	cfg := store.NewPlainConfig()
-	cfg.Users["alice"] = store.UserConfig{Name: "alice", Auth: store.AuthConfig{Type: "key"}}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["alice"] = domain.UserConfig{Name: "alice", Auth: domain.AuthConfig{Type: "key"}}
 
 	out, err := service.Remove(RemoveInput{Config: cfg, Alias: "alice"})
 	if err != nil {

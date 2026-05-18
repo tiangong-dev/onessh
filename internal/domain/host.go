@@ -1,10 +1,4 @@
-package store
-
-type AuthConfig struct {
-	Type     string `yaml:"type"`
-	KeyPath  string `yaml:"key_path,omitempty"`
-	Password string `yaml:"password,omitempty"`
-}
+package domain
 
 type HostConfig struct {
 	Host        string            `yaml:"host"`
@@ -16,21 +10,4 @@ type HostConfig struct {
 	Env         map[string]string `yaml:"env,omitempty"`
 	PreConnect  []string          `yaml:"pre_connect,omitempty"`
 	PostConnect []string          `yaml:"post_connect,omitempty"`
-}
-
-type UserConfig struct {
-	Name string     `yaml:"name"`
-	Auth AuthConfig `yaml:"auth,omitempty"`
-}
-
-type PlainConfig struct {
-	Users map[string]UserConfig `yaml:"users,omitempty"`
-	Hosts map[string]HostConfig `yaml:"hosts"`
-}
-
-func NewPlainConfig() PlainConfig {
-	return PlainConfig{
-		Users: map[string]UserConfig{},
-		Hosts: map[string]HostConfig{},
-	}
 }

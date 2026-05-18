@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"onessh/internal/domain"
 	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 )
 
 func TestServiceExecRunsRemoteCommand(t *testing.T) {
@@ -19,7 +19,7 @@ func TestServiceExecRunsRemoteCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	resolver := &fakeResolver{
 		userName: "alice",
-		auth:     store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
+		auth:     domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
 	}
 	runner := &fakeRunner{}
 	service := Service{
@@ -68,7 +68,7 @@ func TestServiceExecMissingHost(t *testing.T) {
 	t.Parallel()
 
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner:           &fakeRunner{},
 	}
 
@@ -86,7 +86,7 @@ func TestServiceExecRejectsEmptyCommand(t *testing.T) {
 	t.Parallel()
 
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner:           &fakeRunner{},
 	}
 
@@ -127,7 +127,7 @@ func TestServiceExecRunnerErrorReturnsOutputForAudit(t *testing.T) {
 
 	wantErr := errors.New("ssh failed")
 	service := Service{
-		IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+		IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 		Runner:           &fakeRunner{err: wantErr},
 	}
 
@@ -152,7 +152,7 @@ func TestServiceExecAuditsRunnerResult(t *testing.T) {
 
 		audit := &fakeAudit{}
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Runner:           &fakeRunner{},
 			Audit:            audit,
 		}
@@ -180,7 +180,7 @@ func TestServiceExecAuditsRunnerResult(t *testing.T) {
 		wantErr := errors.New("ssh failed")
 		audit := &fakeAudit{}
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Runner:           &fakeRunner{err: wantErr},
 			Audit:            audit,
 		}
@@ -210,7 +210,7 @@ func TestServiceExecIgnoresNilAndFailingAuditSink(t *testing.T) {
 		t.Parallel()
 
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Runner:           &fakeRunner{},
 		}
 		_, err := service.Exec(context.Background(), Input{Config: testConfig(), Alias: "prod", RemoteCmd: []string{"uptime"}})
@@ -223,7 +223,7 @@ func TestServiceExecIgnoresNilAndFailingAuditSink(t *testing.T) {
 		t.Parallel()
 
 		service := Service{
-			IdentityResolver: &fakeResolver{userName: "alice", auth: store.AuthConfig{Type: "key"}},
+			IdentityResolver: &fakeResolver{userName: "alice", auth: domain.AuthConfig{Type: "key"}},
 			Runner:           &fakeRunner{},
 			Audit:            &fakeAudit{err: errors.New("audit unavailable")},
 		}
@@ -234,15 +234,15 @@ func TestServiceExecIgnoresNilAndFailingAuditSink(t *testing.T) {
 	})
 }
 
-func testConfig() store.PlainConfig {
-	return store.PlainConfig{
-		Users: map[string]store.UserConfig{
+func testConfig() domain.PlainConfig {
+	return domain.PlainConfig{
+		Users: map[string]domain.UserConfig{
 			"alice": {
 				Name: "alice",
-				Auth: store.AuthConfig{Type: "key"},
+				Auth: domain.AuthConfig{Type: "key"},
 			},
 		},
-		Hosts: map[string]store.HostConfig{
+		Hosts: map[string]domain.HostConfig{
 			"prod": {
 				Host:    "prod.example.com",
 				UserRef: "alice",
@@ -253,12 +253,12 @@ func testConfig() store.PlainConfig {
 
 type fakeResolver struct {
 	userName string
-	auth     store.AuthConfig
+	auth     domain.AuthConfig
 	err      error
 	called   int
 }
 
-func (f *fakeResolver) ResolveHostIdentity(store.PlainConfig, store.HostConfig) (string, store.AuthConfig, error) {
+func (f *fakeResolver) ResolveHostIdentity(domain.PlainConfig, domain.HostConfig) (string, domain.AuthConfig, error) {
 	f.called++
 	return f.userName, f.auth, f.err
 }

@@ -11,7 +11,6 @@ import (
 	"onessh/internal/domain"
 	"onessh/internal/ports"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 )
 
 type IdentityResolver = ports.IdentityResolver
@@ -29,7 +28,7 @@ type Service struct {
 type AgentConfig = ports.AgentConfig
 
 type Input struct {
-	Config     store.PlainConfig
+	Config     domain.PlainConfig
 	Alias      string
 	RemotePath string
 	LocalPaths []string
@@ -48,10 +47,10 @@ type Output struct {
 }
 
 type Request struct {
-	Config     store.PlainConfig
-	Host       store.HostConfig
+	Config     domain.PlainConfig
+	Host       domain.HostConfig
 	UserName   string
-	Auth       store.AuthConfig
+	Auth       domain.AuthConfig
 	RemotePath string
 	LocalPaths []string
 	IsUpload   bool

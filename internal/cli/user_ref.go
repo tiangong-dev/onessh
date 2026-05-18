@@ -4,10 +4,10 @@ import (
 	"sort"
 	"strings"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
-func sortedUserAliases(users map[string]store.UserConfig) []string {
+func sortedUserAliases(users map[string]domain.UserConfig) []string {
 	aliases := make([]string, 0, len(users))
 	for alias := range users {
 		aliases = append(aliases, alias)
@@ -16,7 +16,7 @@ func sortedUserAliases(users map[string]store.UserConfig) []string {
 	return aliases
 }
 
-func findUserAliasByName(users map[string]store.UserConfig, name string) string {
+func findUserAliasByName(users map[string]domain.UserConfig, name string) string {
 	normalizedName := strings.TrimSpace(name)
 	for alias, cfg := range users {
 		if strings.EqualFold(strings.TrimSpace(cfg.Name), normalizedName) {

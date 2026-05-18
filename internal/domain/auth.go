@@ -2,6 +2,12 @@ package domain
 
 import "strings"
 
+type AuthConfig struct {
+	Type     string `yaml:"type"`
+	KeyPath  string `yaml:"key_path,omitempty"`
+	Password string `yaml:"password,omitempty"`
+}
+
 type AuthType string
 
 const (

@@ -4,19 +4,19 @@ import (
 	"fmt"
 	"os/user"
 
-	"onessh/internal/infra/audit"
-	"onessh/internal/infra/repository"
+	"onessh/internal/audit"
 	"onessh/internal/presenters"
+	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
 
-func (o *rootOptions) repository() (repository.Repository, error) {
-	path, err := repository.ResolvePath(o.dataPath)
+func (o *rootOptions) repository() (store.Repository, error) {
+	path, err := store.ResolvePath(o.dataPath)
 	if err != nil {
-		return repository.Repository{}, err
+		return store.Repository{}, err
 	}
-	return repository.Repository{Path: path}, nil
+	return store.Repository{Path: path}, nil
 }
 
 func (o *rootOptions) logEvent(action, alias, host, user, result string, err error) {
@@ -148,13 +148,15 @@ func newLogStatusCmd(opts *rootOptions) *cobra.Command {
 	}
 }
 
+// currentUserName returns the OS user name as a prompt default.
+// On failure it returns an empty string; callers use it as a default for
+// promptNonEmpty/promptOptional, which already handle the empty case
+// (promptNonEmpty re-prompts until the user supplies a value).
+// Never fall back to "root" — that silently substitutes a privileged account.
 func currentUserName() string {
 	u, err := user.Current()
 	if err != nil {
-		return "root"
-	}
-	if u.Username == "" {
-		return "root"
+		return ""
 	}
 	return u.Username
 }

@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"onessh/internal/domain"
 )
 
 func TestRepositorySaveAndLoad(t *testing.T) {
@@ -15,15 +17,15 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("top-secret-master-password")
 
-	source := NewPlainConfig()
-	source.Users["ops"] = UserConfig{
+	source := domain.NewPlainConfig()
+	source.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	source.Hosts["web1"] = HostConfig{
+	source.Hosts["web1"] = domain.HostConfig{
 		Host:        "1.2.3.4",
 		Description: "Production web server",
 		UserRef:     "ops",
@@ -75,15 +77,15 @@ func TestRepositoryLoadWithWrongPassword(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("correct-pass")
 
-	cfg := NewPlainConfig()
-	cfg.Users["dbuser"] = UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["dbuser"] = domain.UserConfig{
 		Name: "root",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "secret-pass",
 		},
 	}
-	cfg.Hosts["db"] = HostConfig{
+	cfg.Hosts["db"] = domain.HostConfig{
 		Host:    "10.0.0.12",
 		UserRef: "dbuser",
 		Port:    2222,
@@ -115,15 +117,15 @@ func TestRepositoryLoadRejectsUnsafeKDFParams(t *testing.T) {
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
 	pass := []byte("correct-pass")
 
-	cfg := NewPlainConfig()
-	cfg.Users["ops"] = UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	cfg.Hosts["web1"] = HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,
@@ -162,15 +164,15 @@ func TestRepositorySaveKeepsOldDataOnStagedWriteFailure(t *testing.T) {
 		t.Fatalf("save original config: %v", err)
 	}
 
-	replacement := NewPlainConfig()
-	replacement.Users["db"] = UserConfig{
+	replacement := domain.NewPlainConfig()
+	replacement.Users["db"] = domain.UserConfig{
 		Name: "root",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "new-secret",
 		},
 	}
-	replacement.Hosts["db"] = HostConfig{
+	replacement.Hosts["db"] = domain.HostConfig{
 		Host:    "   ",
 		UserRef: "db",
 		Port:    2222,
@@ -237,15 +239,15 @@ func TestRepositorySaveWithResetKeepsOldDataOnWriteFailure(t *testing.T) {
 	t.Parallel()
 
 	repo := Repository{Path: filepath.Join(t.TempDir(), "config")}
-	original := NewPlainConfig()
-	original.Users["ops"] = UserConfig{
+	original := domain.NewPlainConfig()
+	original.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	original.Hosts["web1"] = HostConfig{
+	original.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,
@@ -256,15 +258,15 @@ func TestRepositorySaveWithResetKeepsOldDataOnWriteFailure(t *testing.T) {
 		t.Fatalf("save original config: %v", err)
 	}
 
-	replacement := NewPlainConfig()
-	replacement.Users["db"] = UserConfig{
+	replacement := domain.NewPlainConfig()
+	replacement.Users["db"] = domain.UserConfig{
 		Name: "root",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "new-secret",
 		},
 	}
-	replacement.Hosts["db"] = HostConfig{
+	replacement.Hosts["db"] = domain.HostConfig{
 		Host:    "10.0.0.12",
 		UserRef: "db",
 		Port:    2222,
@@ -289,7 +291,7 @@ func TestRepositorySaveAndSaveWithResetCleanupStaleYAMLFilesConsistently(t *test
 
 	for _, tc := range []struct {
 		name string
-		save func(Repository, PlainConfig, []byte) error
+		save func(Repository, domain.PlainConfig, []byte) error
 	}{
 		{name: "Save", save: Repository.Save},
 		{name: "SaveWithReset", save: Repository.SaveWithReset},
@@ -345,16 +347,16 @@ func TestRepositorySaveAndSaveWithResetCleanupStaleYAMLFilesConsistently(t *test
 	}
 }
 
-func replacementTestConfig() PlainConfig {
-	cfg := NewPlainConfig()
-	cfg.Users["db"] = UserConfig{
+func replacementTestConfig() domain.PlainConfig {
+	cfg := domain.NewPlainConfig()
+	cfg.Users["db"] = domain.UserConfig{
 		Name: "root",
-		Auth: AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "new-secret",
 		},
 	}
-	cfg.Hosts["db"] = HostConfig{
+	cfg.Hosts["db"] = domain.HostConfig{
 		Host:    "10.0.0.12",
 		UserRef: "db",
 		Port:    2222,

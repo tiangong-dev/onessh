@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	copyapp "onessh/internal/app/copy"
+	"onessh/internal/domain"
 	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -165,20 +165,20 @@ Use alias:path to specify a remote path:
 
 type copyIdentityResolver struct{}
 
-func (copyIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (copyIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
 type copyRunner struct{}
 
-func (copyRunner) CopyRemote(_ context.Context, req copyapp.Request) error {
-	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (copyRunner) CopyRemote(ctx context.Context, req copyapp.Request) error {
+	return executeSCP(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 type remoteToRemoteCopyRunner struct{}
 
-func (remoteToRemoteCopyRunner) CopyRemote(_ context.Context, req copyapp.RemoteTransferRequest) error {
-	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (remoteToRemoteCopyRunner) CopyRemote(ctx context.Context, req copyapp.RemoteTransferRequest) error {
+	return executeSCP(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 func parseCpArgs(src, dst string) (alias, remotePath string, isUpload bool, err error) {
@@ -205,7 +205,7 @@ func splitCpArg(arg string) (alias, path string, ok bool) {
 	return arg[:idx], arg[idx+1:], true
 }
 
-func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string, ioStreams appruntime.IOStreams) error {
+func executeRemoteToRemoteCopy(ctx context.Context, cfg domain.PlainConfig, srcArg, dstArg string, recursive bool, agentSocket, agentCapability string, ioStreams appruntime.IOStreams) error {
 	srcAlias, srcPath, _ := splitCpArg(srcArg)
 	dstAlias, dstPath, _ := splitCpArg(dstArg)
 
@@ -230,7 +230,7 @@ func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcAr
 	return err
 }
 
-func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeSCP(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) (retErr error) {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -248,6 +248,10 @@ func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, a
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
+	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

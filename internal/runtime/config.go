@@ -3,9 +3,7 @@ package runtime
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -44,19 +42,6 @@ func NormalizeCacheTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
-func ResolveDataPath(customPath, envPath, homeDir string) (string, error) {
-	if strings.TrimSpace(customPath) != "" {
-		return expandPath(customPath, homeDir)
-	}
-	if strings.TrimSpace(envPath) != "" {
-		return expandPath(envPath, homeDir)
-	}
-	if strings.TrimSpace(homeDir) == "" {
-		return "", fmt.Errorf("resolve home directory: home directory is empty")
-	}
-	return filepath.Join(homeDir, ".config", "onessh", "data"), nil
-}
-
 func ResolveAgentCapability(explicit, envValue, sessionID string) string {
 	if raw := strings.TrimSpace(explicit); raw != "" {
 		return raw
@@ -67,27 +52,15 @@ func ResolveAgentCapability(explicit, envValue, sessionID string) string {
 	return DeriveAgentCapability(sessionID)
 }
 
+// DeriveAgentCapability derives a per-session capability token from the shell
+// session identifier (typically the parent shell PID). It is a deterministic
+// SHA-256 over a fixed prefix concatenated with the session id.
+//
+// Capability is NOT a secret. Any process with the same UID can derive it.
+// Treat it only as a session discriminator, not authentication. Strong
+// isolation between same-UID processes requires an explicit, randomly
+// generated capability supplied out of band.
 func DeriveAgentCapability(sessionID string) string {
 	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + sessionID))
 	return hex.EncodeToString(sum[:])
-}
-
-func expandPath(path, homeDir string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", nil
-	}
-	if path == "~" {
-		if strings.TrimSpace(homeDir) == "" {
-			return "", fmt.Errorf("expand ~: home directory is empty")
-		}
-		return homeDir, nil
-	}
-	if strings.HasPrefix(path, "~/") {
-		if strings.TrimSpace(homeDir) == "" {
-			return "", fmt.Errorf("expand ~: home directory is empty")
-		}
-		return filepath.Join(homeDir, strings.TrimPrefix(path, "~/")), nil
-	}
-	return filepath.Clean(path), nil
 }

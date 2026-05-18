@@ -7,17 +7,18 @@ import (
 	"testing"
 	"time"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 )
 
 func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	passphrase := []byte("master-pass")
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
+		Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"},
 	}
-	cfg.Hosts["web1"] = store.HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "web1.example.com",
 		UserRef: "ops",
 		Port:    22,
@@ -26,10 +27,10 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	}
 	opts, repo := prepareNonInteractiveCLITest(t, cfg, passphrase)
 
-	var updateOut bytes.Buffer
+	var updateOut, updateErr bytes.Buffer
 	updateCmd := newUpdateCmd(opts)
 	updateCmd.SetOut(&updateOut)
-	updateCmd.SetErr(&updateOut)
+	updateCmd.SetErr(&updateErr)
 	updateCmd.SetArgs([]string{
 		"web1",
 		"--alias", "web2",
@@ -53,6 +54,9 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	}
 	if got, want := updateOut.String(), "✔ host web1 renamed to web2 and updated\n"; got != want {
 		t.Fatalf("host update output = %q, want %q", got, want)
+	}
+	if !strings.Contains(updateErr.String(), "--password is insecure") {
+		t.Fatalf("expected --password insecure warning on stderr, got %q", updateErr.String())
 	}
 
 	updated, err := repo.Load(passphrase)
@@ -78,7 +82,7 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	if !reflect.DeepEqual(host.Tags, []string{"prod", "web"}) {
 		t.Fatalf("host tags = %#v", host.Tags)
 	}
-	if got := updated.Users["ops"]; !reflect.DeepEqual(got, store.UserConfig{Name: "root", Auth: store.AuthConfig{Type: "password", Password: "secret"}}) {
+	if got := updated.Users["ops"]; !reflect.DeepEqual(got, domain.UserConfig{Name: "root", Auth: domain.AuthConfig{Type: "password", Password: "secret"}}) {
 		t.Fatalf("linked user = %#v", got)
 	}
 
@@ -108,9 +112,9 @@ func TestHostCLIUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 
 func TestHostCLIUpdateNonInteractivePreservesValidationMessages(t *testing.T) {
 	passphrase := []byte("master-pass")
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{Name: "ubuntu", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
-	cfg.Hosts["web1"] = store.HostConfig{Host: "web1.example.com", UserRef: "ops", Port: 22}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{Name: "ubuntu", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["web1"] = domain.HostConfig{Host: "web1.example.com", UserRef: "ops", Port: 22}
 	opts, _ := prepareNonInteractiveCLITest(t, cfg, passphrase)
 
 	cmd := newUpdateCmd(opts)
@@ -123,7 +127,7 @@ func TestHostCLIUpdateNonInteractivePreservesValidationMessages(t *testing.T) {
 
 func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	passphrase := []byte("master-pass")
-	opts, repo := prepareNonInteractiveCLITest(t, store.NewPlainConfig(), passphrase)
+	opts, repo := prepareNonInteractiveCLITest(t, domain.NewPlainConfig(), passphrase)
 
 	var addOut bytes.Buffer
 	addCmd := newUserAddCmd(opts)
@@ -142,10 +146,10 @@ func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 		t.Fatalf("user add output = %q, want %q", got, want)
 	}
 
-	var updateOut bytes.Buffer
+	var updateOut, updateErr bytes.Buffer
 	updateCmd := newUserUpdateCmd(opts)
 	updateCmd.SetOut(&updateOut)
-	updateCmd.SetErr(&updateOut)
+	updateCmd.SetErr(&updateErr)
 	updateCmd.SetArgs([]string{
 		"ops_user",
 		"--name", " root ",
@@ -158,12 +162,15 @@ func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 	if got, want := updateOut.String(), "✔ user profile ops_user updated\n"; got != want {
 		t.Fatalf("user update output = %q, want %q", got, want)
 	}
+	if !strings.Contains(updateErr.String(), "--password is insecure") {
+		t.Fatalf("expected --password insecure warning on stderr, got %q", updateErr.String())
+	}
 
 	updated, err := repo.Load(passphrase)
 	if err != nil {
 		t.Fatalf("load updated config: %v", err)
 	}
-	if got := updated.Users["ops_user"]; !reflect.DeepEqual(got, store.UserConfig{Name: "root", Auth: store.AuthConfig{Type: "password", Password: "secret"}}) {
+	if got := updated.Users["ops_user"]; !reflect.DeepEqual(got, domain.UserConfig{Name: "root", Auth: domain.AuthConfig{Type: "password", Password: "secret"}}) {
 		t.Fatalf("updated user = %#v", got)
 	}
 
@@ -182,9 +189,9 @@ func TestUserCLIAddUpdateAndRemoveNonInteractiveBehavior(t *testing.T) {
 
 func TestUserCLIRemoveNonInteractivePreservesInUseError(t *testing.T) {
 	passphrase := []byte("master-pass")
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{Name: "ubuntu", Auth: store.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
-	cfg.Hosts["web1"] = store.HostConfig{Host: "web1.example.com", UserRef: "ops", Port: 22}
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{Name: "ubuntu", Auth: domain.AuthConfig{Type: "key", KeyPath: "~/.ssh/id_ed25519"}}
+	cfg.Hosts["web1"] = domain.HostConfig{Host: "web1.example.com", UserRef: "ops", Port: 22}
 	opts, _ := prepareNonInteractiveCLITest(t, cfg, passphrase)
 
 	cmd := newUserRmCmd(opts)
@@ -199,7 +206,7 @@ func TestUserCLIRemoveNonInteractivePreservesInUseError(t *testing.T) {
 	}
 }
 
-func prepareNonInteractiveCLITest(t *testing.T, cfg store.PlainConfig, passphrase []byte) (*rootOptions, store.Repository) {
+func prepareNonInteractiveCLITest(t *testing.T, cfg domain.PlainConfig, passphrase []byte) (*rootOptions, store.Repository) {
 	t.Helper()
 
 	dataPath := t.TempDir()

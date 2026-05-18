@@ -13,7 +13,7 @@
 | `onessh show <alias>` | 查看主机详情 |
 | `onessh user`（`ls`、`add`、`update`、`rm`） | 管理 user profile |
 | `onessh logout [--all]` | 清除主密码缓存 |
-| `onessh log` | 查看最近审计记录（`--last`、`--action`、`--format`）；子命令 `enable` / `disable` / `status` |
+| `onessh log` | 查看最近审计记录（`--last`、`--action`、`--alias`、`--format`）；轮转：`--audit-log-max-size-mb`、`--audit-log-max-backups`、`--audit-log-max-age`、`--audit-log-compress`；子命令 `enable` / `disable` / `status` |
 | `onessh agent`（`start`、`stop`、`status`、`clear-all`） | 内存缓存 agent |
 
 ## SSH 操作
@@ -32,5 +32,15 @@
 ## 批量选择器
 
 远程相关命令支持 `--all`、`--tag <tag>`、`--filter <glob>`（Go `filepath.Match`，**整串**匹配）。在支持的命令中，标签与 filter 可组合为 AND。使用 `--dry-run` 可仅列出匹配主机而不执行。
+
+## 全局参数
+
+所有命令都可使用：
+
+- `--data <path>` — 覆盖数据目录（默认 `~/.config/onessh/data`，环境变量 `ONESSH_DATA`）。
+- `--cache-ttl <duration>` / `--no-cache` — 主密码缓存控制。
+- `--agent-socket <path>` / `--agent-capability <token>` — 内存缓存 agent IPC。
+- `-q, --quiet` — 抑制非必要输出。
+- `--log` — 为本次命令启用审计日志。
 
 更完整的示例见仓库 [README.zh-CN](https://github.com/tiangong-dev/onessh/blob/main/README.zh-CN.md)。

@@ -89,14 +89,46 @@ Token controls:
 
 `SaveWithReset` path is validated before recursive deletion:
 
-- rejects dangerous targets (`/`, empty, `.`)
-- requires directory type
-- for non-empty directories, requires OneSSH store shape (`meta.yaml`, `users`, `hosts`)
-- rejects unexpected extra entries
+- rejects dangerous targets (empty, `/`, `.`)
+- if the path exists, requires it to be a directory (non-existent paths are allowed and created)
 
-This reduces accidental destructive deletions caused by wrong config path.
+This reduces the most obvious accidental destructive deletions caused by a wrong data path. It does **not** verify OneSSH store shape (`meta.yaml`, `users`, `hosts`) or reject extra entries inside the target directory.
 
-## 5. Current Threat Model Notes
+## 5. Design Trade-offs
+
+### Nonce randomization and Git diff noise
+
+Every `Save` regenerates a fresh random nonce for each AES-256-GCM encryption
+(the cryptographic recommendation; nonce reuse under the same key destroys
+GCM's confidentiality and authenticity). As a result the encrypted byte
+sequence in `users/*.yaml` and `hosts/*.yaml` changes on every write, even
+when no semantic field has changed. Committing the OneSSH store to a public
+Git repository will therefore show large byte-level diffs.
+
+This is an intentional trade-off: cryptographic correctness is prioritized
+over diff stability. If diff readability matters, prefer a file-level
+commit hook or squash strategy. **Do not** try to "stabilize" the nonce by
+deriving it from the plaintext or a counter stored in the repo — building a
+sound deterministic-nonce scheme on top of GCM is subtle and easy to get
+wrong, and any mistake collapses GCM's security.
+
+### Master password in-memory wiping limitations
+
+OneSSH zeroes `[]byte` master-password buffers when the call that needs the
+password returns (typically via `defer wipe(...)`), which keeps the window
+short but means a buffer can still be alive while a command runs. Go's
+`string` is immutable and the runtime gives no API to overwrite its backing
+storage. The moment a password
+is converted to `string` (for example to put it inside a struct field or to
+pass to a library that expects `string`), a heap copy is created that lives
+until garbage collection — and even then, no zeroization is guaranteed.
+
+We minimize the `string` exposure window in code paths that accept the
+master password from the prompt, but a complete wipe of every byte that
+once held the password is not achievable in pure Go. Treat process-memory
+inspection by a same-UID adversary as out of scope for this layer.
+
+## 6. Current Threat Model Notes
 
 Mitigated:
 

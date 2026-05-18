@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
+func (r Repository) loadHosts(cfg *domain.PlainConfig, key []byte) error {
 	files, err := os.ReadDir(r.hostsDir())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -54,7 +54,7 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 			return fmt.Errorf("host %s has empty user_ref", alias)
 		}
 
-		hostCfg := HostConfig{
+		hostCfg := domain.HostConfig{
 			Host:        strings.TrimSpace(hostValue),
 			Description: strings.TrimSpace(doc.Description),
 			UserRef:     strings.TrimSpace(doc.UserRef),
@@ -110,7 +110,7 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 	return nil
 }
 
-func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
+func (r Repository) syncHosts(cfg domain.PlainConfig, key []byte) error {
 	if err := os.MkdirAll(r.hostsDir(), 0o700); err != nil {
 		return fmt.Errorf("ensure hosts directory: %w", err)
 	}

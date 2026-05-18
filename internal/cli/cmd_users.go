@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	appusers "onessh/internal/app/users"
+	"onessh/internal/domain"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -122,9 +123,9 @@ func newUserShowCmd(opts *rootOptions) *cobra.Command {
 			}
 
 			if normalizedFormat == "yaml" {
-				outCfg := store.PlainConfig{
-					Hosts: map[string]store.HostConfig{},
-					Users: map[string]store.UserConfig{alias: userCfg},
+				outCfg := domain.PlainConfig{
+					Hosts: map[string]domain.HostConfig{},
+					Users: map[string]domain.UserConfig{alias: userCfg},
 				}
 				if !showSecrets {
 					outCfg = redactConfigForDump(outCfg)
@@ -168,6 +169,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 			if err := validateUserAuthFlagUsage(cmd, authType, keyPath, password); err != nil {
 				return err
 			}
+			warnIfPasswordFlagInsecure(cmd, password)
 
 			repo, err := opts.repository()
 			if err != nil {
@@ -193,7 +195,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			var auth store.AuthConfig
+			var auth domain.AuthConfig
 			authType = normalizeAuthType(authType)
 			if authType != "" {
 				auth, err = authConfigFromFlags(authType, keyPath, password)
@@ -237,7 +239,7 @@ func newUserAddCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Username value for this profile")
 	cmd.Flags().StringVar(&authType, "auth-type", "", "Auth type (key|password)")
 	cmd.Flags().StringVar(&keyPath, "key-path", "", "SSH private key path when auth-type=key")
-	cmd.Flags().StringVar(&password, "password", "", "SSH password when auth-type=password")
+	cmd.Flags().StringVar(&password, "password", "", passwordFlagHelp)
 	return cmd
 }
 
@@ -259,6 +261,7 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 			if err := validateUserAuthFlagUsage(cmd, authType, keyPath, password); err != nil {
 				return err
 			}
+			warnIfPasswordFlagInsecure(cmd, password)
 
 			repo, err := opts.repository()
 			if err != nil {
@@ -334,7 +337,7 @@ func newUserUpdateCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Username value for this profile")
 	cmd.Flags().StringVar(&authType, "auth-type", "", "Auth type (key|password)")
 	cmd.Flags().StringVar(&keyPath, "key-path", "", "SSH private key path when auth-type=key")
-	cmd.Flags().StringVar(&password, "password", "", "SSH password when auth-type=password")
+	cmd.Flags().StringVar(&password, "password", "", passwordFlagHelp)
 	return cmd
 }
 
@@ -365,8 +368,8 @@ func newUserRmCmd(opts *rootOptions) *cobra.Command {
 				Alias:  alias,
 			})
 			if err != nil {
-				if strings.Contains(err.Error(), " is used by host(s): ") && !strings.Contains(err.Error(), "Please remove these hosts first") {
-					return fmt.Errorf("%s. Please remove these hosts first", err.Error())
+				if errors.Is(err, appusers.ErrUserInUse) {
+					return fmt.Errorf("%w. Please remove these hosts first", err)
 				}
 				return err
 			}
@@ -487,8 +490,8 @@ func newLogoutCmd(opts *rootOptions) *cobra.Command {
 }
 
 type masterPasswordRepository interface {
-	Load([]byte) (store.PlainConfig, error)
-	SaveWithReset(store.PlainConfig, []byte) error
+	Load([]byte) (domain.PlainConfig, error)
+	SaveWithReset(domain.PlainConfig, []byte) error
 }
 
 func changeMasterPassword(

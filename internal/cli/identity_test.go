@@ -3,19 +3,19 @@ package cli
 import (
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
 
 func TestResolveHostIdentityWithUserProfileAuth(t *testing.T) {
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:    "key",
 			KeyPath: "~/.ssh/id_ed25519",
 		},
 	}
-	host := store.HostConfig{
+	host := domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 	}
@@ -33,11 +33,11 @@ func TestResolveHostIdentityWithUserProfileAuth(t *testing.T) {
 }
 
 func TestResolveHostIdentityRequiresConfiguredAuth(t *testing.T) {
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
 	}
-	host := store.HostConfig{
+	host := domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 	}
@@ -49,8 +49,8 @@ func TestResolveHostIdentityRequiresConfiguredAuth(t *testing.T) {
 }
 
 func TestResolveHostIdentityRequiresUserRef(t *testing.T) {
-	cfg := store.NewPlainConfig()
-	host := store.HostConfig{
+	cfg := domain.NewPlainConfig()
+	host := domain.HostConfig{
 		Host: "1.2.3.4",
 	}
 
@@ -61,14 +61,14 @@ func TestResolveHostIdentityRequiresUserRef(t *testing.T) {
 }
 
 func TestResolveHostIdentityRequiresPasswordWhenPasswordAuth(t *testing.T) {
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type: "password",
 		},
 	}
-	host := store.HostConfig{
+	host := domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 	}
@@ -82,13 +82,13 @@ func TestResolveHostIdentityRequiresPasswordWhenPasswordAuth(t *testing.T) {
 func TestSummarizeHostIdentityForList(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{Type: "password", Password: "secret"},
+		Auth: domain.AuthConfig{Type: "password", Password: "secret"},
 	}
 
-	userName, authType, status := summarizeHostIdentityForList(cfg, store.HostConfig{Host: "1.2.3.4", UserRef: "ops"})
+	userName, authType, status := summarizeHostIdentityForList(cfg, domain.HostConfig{Host: "1.2.3.4", UserRef: "ops"})
 	if userName != "ubuntu" || authType != "password" || status != "ok" {
 		t.Fatalf("unexpected summarize result: %q %q %q", userName, authType, status)
 	}
@@ -97,10 +97,10 @@ func TestSummarizeHostIdentityForList(t *testing.T) {
 func TestHostAliasesUsingUser(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Hosts["b"] = store.HostConfig{UserRef: "ops"}
-	cfg.Hosts["a"] = store.HostConfig{UserRef: "ops"}
-	cfg.Hosts["x"] = store.HostConfig{UserRef: "dev"}
+	cfg := domain.NewPlainConfig()
+	cfg.Hosts["b"] = domain.HostConfig{UserRef: "ops"}
+	cfg.Hosts["a"] = domain.HostConfig{UserRef: "ops"}
+	cfg.Hosts["x"] = domain.HostConfig{UserRef: "dev"}
 
 	got := hostAliasesUsingUser(cfg, "ops")
 	want := []string{"a", "b"}

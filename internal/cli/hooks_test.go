@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 
 	"github.com/spf13/cobra"
 )
@@ -46,7 +46,7 @@ func TestApplyHostHookUpdateFlags(t *testing.T) {
 		t.Fatalf("set post-connect: %v", err)
 	}
 
-	host := store.HostConfig{}
+	host := domain.HostConfig{}
 	if err := applyHostHookUpdateFlags(cmd, &host, []string{"cd /srv/app"}, []string{"echo bye"}, false, false); err != nil {
 		t.Fatalf("applyHostHookUpdateFlags: %v", err)
 	}
@@ -83,4 +83,3 @@ func TestContainsShortFlag(t *testing.T) {
 		t.Fatalf("did not expect to match long option values")
 	}
 }
-

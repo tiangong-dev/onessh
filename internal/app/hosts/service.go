@@ -6,19 +6,18 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/store"
 )
 
 type Service struct{}
 
 type AddInput struct {
-	Config store.PlainConfig
+	Config domain.PlainConfig
 	Alias  string
-	Host   store.HostConfig
+	Host   domain.HostConfig
 }
 
 type UpdateInput struct {
-	Config store.PlainConfig
+	Config domain.PlainConfig
 	Alias  string
 
 	TargetAlias        string
@@ -66,14 +65,14 @@ type UpdateInput struct {
 }
 
 type RemoveInput struct {
-	Config store.PlainConfig
+	Config domain.PlainConfig
 	Alias  string
 }
 
 type Output struct {
-	Config store.PlainConfig
+	Config domain.PlainConfig
 	Alias  string
-	Host   store.HostConfig
+	Host   domain.HostConfig
 }
 
 func (Service) Add(input AddInput) (Output, error) {
@@ -171,22 +170,22 @@ func (Service) Remove(input RemoveInput) (Output, error) {
 	return Output{Config: cfg, Alias: alias, Host: host}, nil
 }
 
-func normalizeHostConfig(cfg store.PlainConfig, host store.HostConfig) (store.HostConfig, error) {
+func normalizeHostConfig(cfg domain.PlainConfig, host domain.HostConfig) (domain.HostConfig, error) {
 	host.Host = strings.TrimSpace(host.Host)
 	if host.Host == "" {
-		return store.HostConfig{}, errors.New("host cannot be empty")
+		return domain.HostConfig{}, errors.New("host cannot be empty")
 	}
 
 	host.UserRef = domain.NormalizeUserAlias(host.UserRef)
 	if host.UserRef == "" {
-		return store.HostConfig{}, errors.New("user_ref cannot be empty")
+		return domain.HostConfig{}, errors.New("user_ref cannot be empty")
 	}
 	if _, exists := cfg.Users[host.UserRef]; !exists {
-		return store.HostConfig{}, fmt.Errorf("user profile %q not found", host.UserRef)
+		return domain.HostConfig{}, fmt.Errorf("user profile %q not found", host.UserRef)
 	}
 
 	if host.Port < 0 || host.Port > 65535 {
-		return store.HostConfig{}, errors.New("port must be between 1 and 65535")
+		return domain.HostConfig{}, errors.New("port must be between 1 and 65535")
 	}
 	host.Port = domain.EffectivePort(host.Port)
 
@@ -196,7 +195,7 @@ func normalizeHostConfig(cfg store.PlainConfig, host store.HostConfig) (store.Ho
 
 	env, err := normalizeEnvMap(host.Env)
 	if err != nil {
-		return store.HostConfig{}, err
+		return domain.HostConfig{}, err
 	}
 	host.Env = env
 	host.PreConnect = cloneStringSlice(host.PreConnect)
@@ -204,7 +203,7 @@ func normalizeHostConfig(cfg store.PlainConfig, host store.HostConfig) (store.Ho
 	return host, nil
 }
 
-func applyEnvUpdate(host *store.HostConfig, input UpdateInput) error {
+func applyEnvUpdate(host *domain.HostConfig, input UpdateInput) error {
 	if !input.EnvChanged && !input.UnsetEnvChanged && !input.ClearEnv {
 		return nil
 	}
@@ -239,7 +238,7 @@ func applyEnvUpdate(host *store.HostConfig, input UpdateInput) error {
 	return nil
 }
 
-func applyHookUpdate(host *store.HostConfig, input UpdateInput) error {
+func applyHookUpdate(host *domain.HostConfig, input UpdateInput) error {
 	if !input.PreConnectChanged && !input.PostConnectChanged && !input.ClearPreConnect && !input.ClearPostConnect {
 		return nil
 	}
@@ -273,7 +272,7 @@ func applyHookUpdate(host *store.HostConfig, input UpdateInput) error {
 	return nil
 }
 
-func applyTagUpdate(host *store.HostConfig, input UpdateInput) {
+func applyTagUpdate(host *domain.HostConfig, input UpdateInput) {
 	if !input.TagsChanged && !input.UntagChanged && !input.ClearTags {
 		return
 	}
@@ -337,23 +336,23 @@ func normalizeHostAlias(input string) string {
 	return strings.TrimSpace(input)
 }
 
-func cloneConfig(cfg store.PlainConfig) store.PlainConfig {
-	return store.PlainConfig{
+func cloneConfig(cfg domain.PlainConfig) domain.PlainConfig {
+	return domain.PlainConfig{
 		Users: cloneUsers(cfg.Users),
 		Hosts: cloneHosts(cfg.Hosts),
 	}
 }
 
-func cloneUsers(users map[string]store.UserConfig) map[string]store.UserConfig {
-	cloned := make(map[string]store.UserConfig, len(users))
+func cloneUsers(users map[string]domain.UserConfig) map[string]domain.UserConfig {
+	cloned := make(map[string]domain.UserConfig, len(users))
 	for alias, user := range users {
 		cloned[alias] = user
 	}
 	return cloned
 }
 
-func cloneHosts(hosts map[string]store.HostConfig) map[string]store.HostConfig {
-	cloned := make(map[string]store.HostConfig, len(hosts))
+func cloneHosts(hosts map[string]domain.HostConfig) map[string]domain.HostConfig {
+	cloned := make(map[string]domain.HostConfig, len(hosts))
 	for alias, host := range hosts {
 		host.Tags = cloneStringSlice(host.Tags)
 		host.Env = cloneStringMap(host.Env)

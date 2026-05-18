@@ -202,6 +202,21 @@ func AskPassLauncherScript() string {
 }
 
 // BuildAskPassEnv returns the environment consumed by the askpass launcher.
+//
+// SECURITY: SSH_ASKPASS helpers are exec'd by ssh, which forwards its own
+// environment (including ONESSH_ASKPASS_TOKEN) to the helper. The token is
+// therefore visible to same-UID processes via /proc/<pid>/environ for the
+// helper's lifetime. The OpenSSH protocol does not provide an alternate
+// channel (stdin/fd/file) to pass credentials to the helper that would
+// avoid this exposure. We rely on three layered mitigations instead:
+//   1. Short TTL (DefaultAskPassTTL = 10s).
+//   2. Single-use semantics (DefaultAskPassMaxUses = 1).
+//   3. Capability binding (ONESSH_ASKPASS_CAPABILITY) so a leaked token
+//      cannot be redeemed without the per-session capability secret.
+// Same-UID attackers can already ptrace/read the parent onessh process, so
+// further hardening of this specific surface yields little marginal value.
+// Users requiring stronger isolation should install sshpass (see
+// PasswordAuthStrategy.ApplyPasswordAuth).
 func BuildAskPassEnv(input AskPassEnv) []string {
 	env := []string{
 		"SSH_ASKPASS=" + input.ScriptPath,
@@ -218,7 +233,7 @@ func BuildAskPassEnv(input AskPassEnv) []string {
 }
 
 // PrepareAskPassEnv registers a token and creates the temporary SSH_ASKPASS launcher.
-func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
+func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func() error, error) {
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, errors.New("password auth requires non-empty password")
 	}
@@ -252,9 +267,12 @@ func PrepareAskPassEnv(agentSocket, agentCapability, password string) ([]string,
 		Token:      token,
 		Capability: capabilityValue,
 	})
-	cleanup := func() {
+	cleanup := func() error {
 		clearToken()
-		_ = os.Remove(scriptPath)
+		if err := os.Remove(scriptPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove askpass launcher: %w", err)
+		}
+		return nil
 	}
 	return env, cleanup, nil
 }

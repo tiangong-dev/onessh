@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	execapp "onessh/internal/app/exec"
+	"onessh/internal/domain"
 	"onessh/internal/presenters"
 	appruntime "onessh/internal/runtime"
-	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
@@ -99,17 +99,17 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 
 type execIdentityResolver struct{}
 
-func (execIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+func (execIdentityResolver) ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error) {
 	return resolveHostIdentity(cfg, host)
 }
 
 type execRemoteRunner struct{}
 
-func (execRemoteRunner) ExecRemote(_ context.Context, req execapp.RemoteRequest) error {
-	return executeRemoteCmd(req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (execRemoteRunner) ExecRemote(ctx context.Context, req execapp.RemoteRequest) error {
+	return executeRemoteCmd(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
-func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(ctx context.Context, cfg domain.PlainConfig, host domain.HostConfig, userName string, auth domain.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) (retErr error) {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -128,6 +128,10 @@ func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName str
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
+	defer func() {
+		if cerr := cleanup(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
+	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"onessh/internal/domain"
+
 	"gopkg.in/yaml.v3"
 )
 
-func (r Repository) loadUsers(cfg *PlainConfig, key []byte) error {
+func (r Repository) loadUsers(cfg *domain.PlainConfig, key []byte) error {
 	files, err := os.ReadDir(r.usersDir())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -54,7 +56,7 @@ func (r Repository) loadUsers(cfg *PlainConfig, key []byte) error {
 			return fmt.Errorf("user %s has invalid auth type", alias)
 		}
 
-		userCfg := UserConfig{Name: strings.TrimSpace(name), Auth: AuthConfig{Type: authType}}
+		userCfg := domain.UserConfig{Name: strings.TrimSpace(name), Auth: domain.AuthConfig{Type: authType}}
 		switch authType {
 		case "key":
 			keyPath, err := decryptStringField(doc.Auth.KeyPath, key)
@@ -81,7 +83,7 @@ func (r Repository) loadUsers(cfg *PlainConfig, key []byte) error {
 	return nil
 }
 
-func (r Repository) syncUsers(cfg PlainConfig, key []byte) error {
+func (r Repository) syncUsers(cfg domain.PlainConfig, key []byte) error {
 	if err := os.MkdirAll(r.usersDir(), 0o700); err != nil {
 		return fmt.Errorf("ensure users directory: %w", err)
 	}

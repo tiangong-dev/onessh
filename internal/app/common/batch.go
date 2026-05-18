@@ -6,12 +6,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"onessh/internal/domain"
 	"onessh/internal/ports"
-	"onessh/internal/store"
 )
 
 type BatchIdentityResolver interface {
-	ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error)
+	ResolveHostIdentity(cfg domain.PlainConfig, host domain.HostConfig) (string, domain.AuthConfig, error)
 }
 
 type BatchRunner interface {
@@ -25,7 +25,7 @@ func (f BatchRunnerFunc) RunBatchHost(ctx context.Context, req BatchRequest) Bat
 }
 
 type BatchInput struct {
-	Config           store.PlainConfig
+	Config           domain.PlainConfig
 	Aliases          []string
 	Parallel         int
 	AuditAction      string
@@ -37,14 +37,14 @@ type BatchInput struct {
 
 type BatchRequest struct {
 	Alias    string
-	Host     store.HostConfig
+	Host     domain.HostConfig
 	UserName string
-	Auth     store.AuthConfig
+	Auth     domain.AuthConfig
 }
 
 type BatchResult struct {
 	Alias  string
-	Host   store.HostConfig
+	Host   domain.HostConfig
 	Skip   bool
 	Err    error
 	Stdout []byte
@@ -71,11 +71,60 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 	var completed atomic.Int32
 
 	for i, alias := range input.Aliases {
+		// Stop dispatching new work as soon as the caller cancels (e.g. Ctrl-C).
+		// Already-running goroutines still finish via wg.Wait so we don't leak,
+		// but the underlying ssh/scp processes are killed via exec.CommandContext.
+		// Mark remaining aliases as skipped so callers don't render them as OK.
+		if ctx.Err() != nil {
+			for j := i; j < total; j++ {
+				results[j] = BatchResult{
+					Alias: input.Aliases[j],
+					Host:  input.Config.Hosts[input.Aliases[j]],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+			}
+			break
+		}
 		wg.Add(1)
 		go func(i int, alias string) {
 			defer wg.Done()
-			sem <- struct{}{}
+
+			// Honour cancellation while waiting for a worker slot; otherwise a
+			// long parallel batch would queue up after ctx is already done.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				result := BatchResult{
+					Alias: alias,
+					Host:  input.Config.Hosts[alias],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+				results[i] = result
+				n := completed.Add(1)
+				if input.OnProgress != nil {
+					input.OnProgress(int(n), total)
+				}
+				return
+			}
 			defer func() { <-sem }()
+
+			// Re-check after acquiring the slot in case ctx was cancelled while we waited.
+			if ctx.Err() != nil {
+				result := BatchResult{
+					Alias: alias,
+					Host:  input.Config.Hosts[alias],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+				results[i] = result
+				n := completed.Add(1)
+				if input.OnProgress != nil {
+					input.OnProgress(int(n), total)
+				}
+				return
+			}
 
 			host := input.Config.Hosts[alias]
 			result := BatchResult{
@@ -121,7 +170,7 @@ func recordBatchRunAudit(input BatchInput, result BatchResult, userName string) 
 	recordBatchAudit(input, result.Alias, result.Host, userName, status, result.Err)
 }
 
-func recordBatchAudit(input BatchInput, alias string, host store.HostConfig, userName, result string, err error) {
+func recordBatchAudit(input BatchInput, alias string, host domain.HostConfig, userName, result string, err error) {
 	if input.Audit == nil || input.AuditAction == "" {
 		return
 	}

@@ -2,6 +2,11 @@ package domain
 
 import "strings"
 
+type UserConfig struct {
+	Name string     `yaml:"name"`
+	Auth AuthConfig `yaml:"auth,omitempty"`
+}
+
 func NormalizeUserAlias(input string) string {
 	alias := strings.ToLower(strings.TrimSpace(input))
 	if alias == "" {

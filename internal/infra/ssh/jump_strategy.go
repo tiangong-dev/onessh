@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"onessh/internal/domain"
-	"onessh/internal/store"
 )
 
 // ProxyJumpStrategy resolves ProxyJump configuration into SSH arguments.
@@ -15,12 +14,12 @@ type ProxyJumpStrategy struct {
 }
 
 // BuildProxyJumpArgs resolves the ProxyJump value into SSH arguments.
-func BuildProxyJumpArgs(cfg store.PlainConfig, proxyJump string, opts ArgsOptions) ([]string, error) {
+func BuildProxyJumpArgs(cfg domain.PlainConfig, proxyJump string, opts ArgsOptions) ([]string, error) {
 	return ProxyJumpStrategy{ResolveOnesshPath: opts.resolveOnesshPath}.BuildArgs(cfg, proxyJump)
 }
 
 // BuildArgs resolves the ProxyJump value into SSH arguments.
-func (s ProxyJumpStrategy) BuildArgs(cfg store.PlainConfig, proxyJump string) ([]string, error) {
+func (s ProxyJumpStrategy) BuildArgs(cfg domain.PlainConfig, proxyJump string) ([]string, error) {
 	if proxyJump == "" {
 		return nil, nil
 	}

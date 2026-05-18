@@ -7,7 +7,13 @@ import (
 	"strings"
 )
 
-func newPasswordFD(password string) (*os.File, func(), error) {
+// newPasswordFD returns a pipe reader pre-loaded with the SSH password followed
+// by a newline. The write happens in a background goroutine so passwords longer
+// than the OS pipe buffer (typically 64KiB on Linux) do not deadlock the
+// caller. The returned cleanup closes the reader, waits for the writer
+// goroutine to drain, and returns any non-benign write error so the caller
+// can surface it alongside the command result.
+func newPasswordFD(password string) (*os.File, func() error, error) {
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, errors.New("password auth requires non-empty password")
 	}
@@ -18,20 +24,30 @@ func newPasswordFD(password string) (*os.File, func(), error) {
 	}
 
 	secret := append([]byte(password), '\n')
-	defer wipe(secret)
+	writeErr := make(chan error, 1)
+	go func() {
+		defer close(writeErr)
+		// password string copy stays in heap; Go has no API to wipe immutable strings
+		defer wipe(secret)
+		defer func() { _ = writer.Close() }()
+		if _, err := writer.Write(secret); err != nil {
+			writeErr <- err
+		}
+	}()
 
-	if _, err := writer.Write(secret); err != nil {
+	cleanup := func() error {
 		_ = reader.Close()
-		_ = writer.Close()
-		return nil, nil, fmt.Errorf("write password to pipe: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		_ = reader.Close()
-		return nil, nil, fmt.Errorf("close password pipe writer: %w", err)
-	}
-
-	cleanup := func() {
-		_ = reader.Close()
+		// Drain the goroutine. Closing the reader before the goroutine finishes
+		// can cause Write to fail with EPIPE / ErrClosed; that race is benign
+		// because the consumer (typically sshpass) already exited.
+		err, ok := <-writeErr
+		if !ok || err == nil {
+			return nil
+		}
+		if errors.Is(err, os.ErrClosed) {
+			return nil
+		}
+		return fmt.Errorf("password fd write: %w", err)
 	}
 	return reader, cleanup, nil
 }

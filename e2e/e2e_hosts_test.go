@@ -81,7 +81,7 @@ func TestCLIInitAddListShowDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run show: %v\n%s", err, showOut)
 	}
-	if !strings.Contains(showOut, "Alias:        web1") || !strings.Contains(showOut, "APP_ENV=dev") {
+	if !strings.Contains(showOut, "Alias:        web1") || !strings.Contains(showOut, "APP_ENV=[REDACTED]") {
 		t.Fatalf("unexpected show output: %q", showOut)
 	}
 

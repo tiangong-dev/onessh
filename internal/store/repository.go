@@ -6,7 +6,7 @@ import (
 	"os"
 	"regexp"
 
-	appruntime "onessh/internal/runtime"
+	"onessh/internal/domain"
 )
 
 var (
@@ -73,7 +73,7 @@ func ResolvePath(customPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return appruntime.ResolveDataPath(customPath, os.Getenv("ONESSH_DATA"), homeDir)
+	return ResolveDataPath(customPath, os.Getenv("ONESSH_DATA"), homeDir)
 }
 
 func (r Repository) Exists() bool {
@@ -81,28 +81,28 @@ func (r Repository) Exists() bool {
 	return err == nil
 }
 
-func (r Repository) Load(passphrase []byte) (PlainConfig, error) {
+func (r Repository) Load(passphrase []byte) (domain.PlainConfig, error) {
 	_, key, err := r.loadMetaAndKey(passphrase, false)
 	if err != nil {
-		return PlainConfig{}, err
+		return domain.PlainConfig{}, err
 	}
 	defer zeroBytes(key)
 
-	cfg := NewPlainConfig()
+	cfg := domain.NewPlainConfig()
 	if err := r.loadUsers(&cfg, key); err != nil {
-		return PlainConfig{}, err
+		return domain.PlainConfig{}, err
 	}
 	if err := r.loadHosts(&cfg, key); err != nil {
-		return PlainConfig{}, err
+		return domain.PlainConfig{}, err
 	}
 	if err := validateHostUserRefs(cfg); err != nil {
-		return PlainConfig{}, err
+		return domain.PlainConfig{}, err
 	}
 
 	return cfg, nil
 }
 
-func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
+func (r Repository) Save(cfg domain.PlainConfig, passphrase []byte) error {
 	lock, err := acquireRepositoryWriteLock(r.Path)
 	if err != nil {
 		return err
@@ -112,12 +112,12 @@ func (r Repository) Save(cfg PlainConfig, passphrase []byte) error {
 	return r.saveStaged(cfg, passphrase, true)
 }
 
-func (r Repository) saveWithoutLock(cfg PlainConfig, passphrase []byte) error {
+func (r Repository) saveWithoutLock(cfg domain.PlainConfig, passphrase []byte) error {
 	if cfg.Hosts == nil {
-		cfg.Hosts = map[string]HostConfig{}
+		cfg.Hosts = map[string]domain.HostConfig{}
 	}
 	if cfg.Users == nil {
-		cfg.Users = map[string]UserConfig{}
+		cfg.Users = map[string]domain.UserConfig{}
 	}
 	if err := validateHostUserRefs(cfg); err != nil {
 		return err
@@ -140,7 +140,7 @@ func (r Repository) saveWithoutLock(cfg PlainConfig, passphrase []byte) error {
 	return nil
 }
 
-func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
+func (r Repository) SaveWithReset(cfg domain.PlainConfig, passphrase []byte) error {
 	if err := validateResetPath(r.Path); err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (r Repository) SaveWithReset(cfg PlainConfig, passphrase []byte) error {
 	return r.saveStaged(cfg, passphrase, false)
 }
 
-func (r Repository) saveStaged(cfg PlainConfig, passphrase []byte, preserveExistingMeta bool) error {
+func (r Repository) saveStaged(cfg domain.PlainConfig, passphrase []byte, preserveExistingMeta bool) error {
 	stagedPath, cleanupStaged, err := prepareSwapTempDir(r.Path, "stage")
 	if err != nil {
 		return fmt.Errorf("prepare staged store: %w", err)

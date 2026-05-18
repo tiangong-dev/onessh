@@ -1,25 +1,57 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
-	"onessh/internal/store"
+	"onessh/internal/domain"
 )
+
+func TestRenderHostDetailsTableRedactsEnv(t *testing.T) {
+	t.Parallel()
+
+	cfg := domain.NewPlainConfig()
+	host := domain.HostConfig{
+		Host: "1.2.3.4",
+		Port: 22,
+		Env: map[string]string{
+			"TOKEN":       "sensitive",
+			"AWS_PROFILE": "prod",
+		},
+	}
+
+	var buf bytes.Buffer
+	renderHostDetailsTable(&buf, "web1", host, cfg)
+
+	out := buf.String()
+	if strings.Contains(out, "sensitive") || strings.Contains(out, "prod") {
+		t.Fatalf("table output leaked env values: %q", out)
+	}
+	if !strings.Contains(out, "TOKEN="+redactedSecretValue) {
+		t.Fatalf("expected redacted TOKEN, got: %q", out)
+	}
+	if !strings.Contains(out, "AWS_PROFILE="+redactedSecretValue) {
+		t.Fatalf("expected redacted AWS_PROFILE, got: %q", out)
+	}
+}
 
 func TestRedactConfigForDump(t *testing.T) {
 	t.Parallel()
 
-	cfg := store.NewPlainConfig()
-	cfg.Users["ops"] = store.UserConfig{
+	cfg := domain.NewPlainConfig()
+	cfg.Users["ops"] = domain.UserConfig{
 		Name: "ubuntu",
-		Auth: store.AuthConfig{
+		Auth: domain.AuthConfig{
 			Type:     "password",
 			Password: "secret-pass",
 		},
 	}
-	cfg.Hosts["web1"] = store.HostConfig{
+	cfg.Hosts["web1"] = domain.HostConfig{
 		Host:    "1.2.3.4",
 		UserRef: "ops",
 		Port:    22,
@@ -50,7 +82,11 @@ func TestNewPasswordFD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPasswordFD: %v", err)
 	}
-	defer cleanup()
+	defer func() {
+		if cerr := cleanup(); cerr != nil {
+			t.Errorf("cleanup: %v", cerr)
+		}
+	}()
 
 	raw, err := io.ReadAll(fd)
 	if err != nil {
@@ -58,6 +94,51 @@ func TestNewPasswordFD(t *testing.T) {
 	}
 	if string(raw) != "hello-pass\n" {
 		t.Fatalf("unexpected password payload: %q", string(raw))
+	}
+}
+
+// TestNewPasswordFDLargePasswordDoesNotBlock guards against a regression where
+// the password was written synchronously in newPasswordFD. OS pipe buffers are
+// typically 64 KiB on Linux; writing a larger payload before the reader drains
+// would deadlock the caller. The background-goroutine implementation lets the
+// reader drain at its own pace.
+func TestNewPasswordFDLargePasswordDoesNotBlock(t *testing.T) {
+	t.Parallel()
+
+	const size = 128 * 1024
+	password := strings.Repeat("a", size)
+
+	done := make(chan struct{})
+	var (
+		fd      *os.File
+		cleanup func() error
+		fdErr   error
+	)
+	go func() {
+		fd, cleanup, fdErr = newPasswordFD(password)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("newPasswordFD blocked on large password (pipe buffer deadlock)")
+	}
+	if fdErr != nil {
+		t.Fatalf("newPasswordFD: %v", fdErr)
+	}
+	defer func() {
+		if cerr := cleanup(); cerr != nil {
+			t.Errorf("cleanup: %v", cerr)
+		}
+	}()
+
+	raw, err := io.ReadAll(fd)
+	if err != nil {
+		t.Fatalf("read password fd: %v", err)
+	}
+	if len(raw) != size+1 || string(raw[:size]) != password || raw[size] != '\n' {
+		t.Fatalf("unexpected payload size=%d (want %d) trailing=%q", len(raw), size+1, raw[len(raw)-1:])
 	}
 }
 
@@ -74,7 +155,7 @@ func TestBuildOnesshProxyCommandShellQuotesDynamicValues(t *testing.T) {
 func TestRunExternalCommandRejectsUnsupportedBinary(t *testing.T) {
 	t.Parallel()
 
-	err := runExternalCommand("sh", []string{"-c", "true"}, nil, nil, nil, io.Discard, io.Discard)
+	err := runExternalCommand(context.Background(), "sh", []string{"-c", "true"}, nil, nil, nil, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "unsupported external command") {
 		t.Fatalf("expected unsupported command error, got %v", err)
 	}
