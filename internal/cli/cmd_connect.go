@@ -3,12 +3,12 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	connectapp "onessh/internal/app/connect"
+	infraagent "onessh/internal/infra/agent"
 	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
@@ -167,66 +167,5 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 }
 
 func prepareAskPassEnv(agentSocket, agentCapability, password string) ([]string, func(), error) {
-	if strings.TrimSpace(password) == "" {
-		return nil, nil, errors.New("password auth requires non-empty password")
-	}
-
-	socketPath, err := resolveAgentSocketPath(agentSocket)
-	if err != nil {
-		return nil, nil, err
-	}
-	token, clearToken, err := registerAskPassToken(socketPath, password, defaultAskPassTTL, defaultAskPassMaxUses, agentCapability)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	exePath, err := os.Executable()
-	if err != nil {
-		clearToken()
-		return nil, nil, fmt.Errorf("resolve executable path: %w", err)
-	}
-
-	scriptFile, err := os.CreateTemp("", "onessh-askpass-*.sh")
-	if err != nil {
-		clearToken()
-		return nil, nil, fmt.Errorf("create askpass launcher: %w", err)
-	}
-	scriptPath := scriptFile.Name()
-
-	launcher := "#!/bin/sh\nexec \"$ONESSH_ASKPASS_EXE\" askpass --socket \"$ONESSH_ASKPASS_SOCKET\" --token \"$ONESSH_ASKPASS_TOKEN\"\n"
-	if _, err := scriptFile.WriteString(launcher); err != nil {
-		_ = scriptFile.Close()
-		_ = os.Remove(scriptPath)
-		clearToken()
-		return nil, nil, fmt.Errorf("write askpass launcher: %w", err)
-	}
-	if err := scriptFile.Close(); err != nil {
-		_ = os.Remove(scriptPath)
-		clearToken()
-		return nil, nil, fmt.Errorf("close askpass launcher: %w", err)
-	}
-	// #nosec G302 -- SSH_ASKPASS helper must be owner-executable.
-	if err := os.Chmod(scriptPath, 0o500); err != nil {
-		_ = os.Remove(scriptPath)
-		clearToken()
-		return nil, nil, fmt.Errorf("chmod askpass launcher: %w", err)
-	}
-
-	capabilityValue := resolveAgentCapability(agentCapability)
-	env := []string{
-		"SSH_ASKPASS=" + scriptPath,
-		"SSH_ASKPASS_REQUIRE=force",
-		"DISPLAY=onessh:0",
-		"ONESSH_ASKPASS_EXE=" + exePath,
-		"ONESSH_ASKPASS_SOCKET=" + socketPath,
-		"ONESSH_ASKPASS_TOKEN=" + token,
-	}
-	if capabilityValue != "" {
-		env = append(env, "ONESSH_ASKPASS_CAPABILITY="+capabilityValue)
-	}
-	cleanup := func() {
-		clearToken()
-		_ = os.Remove(scriptPath)
-	}
-	return env, cleanup, nil
+	return infraagent.PrepareAskPassEnv(agentSocket, agentCapability, password)
 }
