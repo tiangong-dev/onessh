@@ -19,8 +19,15 @@ func loadConfig(opts *rootOptions, repo repository.Repository) (store.PlainConfi
 		if loadErr == nil {
 			return cfg, cachedPassphrase, nil
 		}
-		wipe(cachedPassphrase)
-		_ = cache.Clear()
+		// Only invalidate the cache when the cached passphrase is provably wrong.
+		// Other errors (e.g. I/O, ErrConfigNotFound) leave the cache intact and propagate.
+		if errors.Is(loadErr, store.ErrInvalidPassword) {
+			wipe(cachedPassphrase)
+			_ = cache.Clear()
+		} else {
+			wipe(cachedPassphrase)
+			return store.PlainConfig{}, nil, loadErr
+		}
 	}
 
 	passphrase, err := promptRequiredPassword("Enter master password: ")

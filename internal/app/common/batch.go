@@ -71,11 +71,51 @@ func RunBatch(ctx context.Context, input BatchInput) ([]BatchResult, error) {
 	var completed atomic.Int32
 
 	for i, alias := range input.Aliases {
+		// Stop dispatching new work as soon as the caller cancels (e.g. Ctrl-C).
+		// Already-running goroutines still finish via wg.Wait so we don't leak,
+		// but the underlying ssh/scp processes are killed via exec.CommandContext.
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
 		go func(i int, alias string) {
 			defer wg.Done()
-			sem <- struct{}{}
+
+			// Honour cancellation while waiting for a worker slot; otherwise a
+			// long parallel batch would queue up after ctx is already done.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				result := BatchResult{
+					Alias: alias,
+					Host:  input.Config.Hosts[alias],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+				results[i] = result
+				n := completed.Add(1)
+				if input.OnProgress != nil {
+					input.OnProgress(int(n), total)
+				}
+				return
+			}
 			defer func() { <-sem }()
+
+			// Re-check after acquiring the slot in case ctx was cancelled while we waited.
+			if ctx.Err() != nil {
+				result := BatchResult{
+					Alias: alias,
+					Host:  input.Config.Hosts[alias],
+					Skip:  true,
+					Err:   ctx.Err(),
+				}
+				results[i] = result
+				n := completed.Add(1)
+				if input.OnProgress != nil {
+					input.OnProgress(int(n), total)
+				}
+				return
+			}
 
 			host := input.Config.Hosts[alias]
 			result := BatchResult{

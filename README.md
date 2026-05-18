@@ -13,7 +13,7 @@ OneSSH is a CLI SSH manager built around a single master password. Hosts, creden
 Minimal flow after install: create the encrypted store, register a host, list entries, then open a session. Replace `web1` with your own host alias.
 
 ```bash
-# Create ~/.onessh (or $ONESSH_HOME) and set the master password used to encrypt secrets
+# Create ~/.config/onessh/data (override via --data or $ONESSH_DATA) and set the master password used to encrypt secrets
 onessh init
 # Interactive wizard: host, user, auth (key/password), optional port and labels
 onessh add web1

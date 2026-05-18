@@ -19,7 +19,7 @@ cd onessh
 make build
 ```
 
-The `onessh` binary is written to the repository root.
+The `onessh` binary is written to `bin/onessh` under the repository root.
 
 ## Initialize
 

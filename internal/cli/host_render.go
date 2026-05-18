@@ -102,8 +102,11 @@ func renderHostDetailsTable(out io.Writer, alias string, host store.HostConfig, 
 	if len(host.Env) > 0 {
 		fmt.Fprintf(out, "Env:\n")
 		keys := sortedStringMapKeys(host.Env)
+		// Table output has no --show-secrets toggle (yaml only), so env values
+		// are always redacted here to match the yaml redaction path
+		// (see redactConfigForDump).
 		for _, key := range keys {
-			fmt.Fprintf(out, "  %s=%s\n", key, host.Env[key])
+			fmt.Fprintf(out, "  %s=%s\n", key, redactedSecretValue)
 		}
 	}
 

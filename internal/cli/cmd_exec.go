@@ -105,11 +105,11 @@ func (execIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host stor
 
 type execRemoteRunner struct{}
 
-func (execRemoteRunner) ExecRemote(_ context.Context, req execapp.RemoteRequest) error {
-	return executeRemoteCmd(req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (execRemoteRunner) ExecRemote(ctx context.Context, req execapp.RemoteRequest) error {
+	return executeRemoteCmd(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
-func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeRemoteCmd(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -129,5 +129,5 @@ func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName str
 		return err
 	}
 	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
+	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

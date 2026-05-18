@@ -171,14 +171,14 @@ func (copyIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host stor
 
 type copyRunner struct{}
 
-func (copyRunner) CopyRemote(_ context.Context, req copyapp.Request) error {
-	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (copyRunner) CopyRemote(ctx context.Context, req copyapp.Request) error {
+	return executeSCP(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 type remoteToRemoteCopyRunner struct{}
 
-func (remoteToRemoteCopyRunner) CopyRemote(_ context.Context, req copyapp.RemoteTransferRequest) error {
-	return executeSCP(req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
+func (remoteToRemoteCopyRunner) CopyRemote(ctx context.Context, req copyapp.RemoteTransferRequest) error {
+	return executeSCP(ctx, req.Config, req.Host, req.UserName, req.Auth, req.RemotePath, req.LocalPaths, req.IsUpload, req.Recursive, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 func parseCpArgs(src, dst string) (alias, remotePath string, isUpload bool, err error) {
@@ -230,7 +230,7 @@ func executeRemoteToRemoteCopy(ctx context.Context, cfg store.PlainConfig, srcAr
 	return err
 }
 
-func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
+func executeSCP(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remotePath string, localPaths []string, isUpload, recursive bool, agentSocket, agentCapability string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -249,5 +249,5 @@ func executeSCP(cfg store.PlainConfig, host store.HostConfig, userName string, a
 		return err
 	}
 	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, os.Stdin, stdout, stderr)
+	return runExternalCommand(ctx, binary, args, env, extraFiles, os.Stdin, stdout, stderr)
 }

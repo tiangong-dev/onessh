@@ -9,7 +9,7 @@
 - **单一主密码体验**：主机与用户配置均加密存储。
 - **适合 Git 的加密存储**（YAML 中的 `ENC[...]` 字段）。
 - **仅内存的运行时密钥缓存**（本地 agent）。
-- **统一的 SSH 操作**（交互式 `onessh <alias>`、`exec`、`cp`、`test`，同一配置模型）。
+- **统一的 SSH 操作**（交互式 `onessh <alias>`、`exec`、`cp`、`ping`，同一配置模型）。
 - **默认简单的本地命名空间区分**（agent 套接字/capability 由父 shell PID 派生，偏便利性设计，不是同 UID 下的强安全边界）。
 
 ## 2. 高层组件关系
@@ -34,7 +34,7 @@ flowchart LR
   - 二进制入口、版本与构建信息。
 - `internal/cli`
   - 命令定义、参数解析与适配层接线。
-  - 重构迁移期间仍承载 agent 协议与 askpass 回退逻辑。
+  - 承载 agent 协议与 askpass 回退逻辑。
   - 批量命令适配（`--all`、`--tag`、`--filter`、`--parallel`）。
 - `internal/app`
   - connect、exec、copy、host/user 管理，以及共享 batch 行为的用例服务。
@@ -125,7 +125,7 @@ flowchart TD
    - `init`、`add`、`update`、`rm`、`user *`、`passwd`、`show`、`ls`
    - 主要在解密后的模型上操作，再写回加密存储。
 2. **远程操作类命令**
-   - 根命令 `onessh <alias>`（交互式 SSH；无 `connect` 子命令），以及 `exec`、`cp`、`test`
+   - 根命令 `onessh <alias>`（交互式 SSH；无 `connect` 子命令），以及 `exec`、`cp`、`ping`
    - 解析主机与用户 profile 后，调用 SSH 传输适配层。
 
 ### 7.1 远程操作流水线

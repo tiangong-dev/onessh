@@ -148,13 +148,15 @@ func newLogStatusCmd(opts *rootOptions) *cobra.Command {
 	}
 }
 
+// currentUserName returns the OS user name as a prompt default.
+// On failure it returns an empty string; callers use it as a default for
+// promptNonEmpty/promptOptional, which already handle the empty case
+// (promptNonEmpty re-prompts until the user supplies a value).
+// Never fall back to "root" — that silently substitutes a privileged account.
 func currentUserName() string {
 	u, err := user.Current()
 	if err != nil {
-		return "root"
-	}
-	if u.Username == "" {
-		return "root"
+		return ""
 	}
 	return u.Username
 }

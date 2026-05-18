@@ -1,12 +1,42 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"io"
 	"strings"
 	"testing"
 
 	"onessh/internal/store"
 )
+
+func TestRenderHostDetailsTableRedactsEnv(t *testing.T) {
+	t.Parallel()
+
+	cfg := store.NewPlainConfig()
+	host := store.HostConfig{
+		Host: "1.2.3.4",
+		Port: 22,
+		Env: map[string]string{
+			"TOKEN":       "sensitive",
+			"AWS_PROFILE": "prod",
+		},
+	}
+
+	var buf bytes.Buffer
+	renderHostDetailsTable(&buf, "web1", host, cfg)
+
+	out := buf.String()
+	if strings.Contains(out, "sensitive") || strings.Contains(out, "prod") {
+		t.Fatalf("table output leaked env values: %q", out)
+	}
+	if !strings.Contains(out, "TOKEN="+redactedSecretValue) {
+		t.Fatalf("expected redacted TOKEN, got: %q", out)
+	}
+	if !strings.Contains(out, "AWS_PROFILE="+redactedSecretValue) {
+		t.Fatalf("expected redacted AWS_PROFILE, got: %q", out)
+	}
+}
 
 func TestRedactConfigForDump(t *testing.T) {
 	t.Parallel()
@@ -74,7 +104,7 @@ func TestBuildOnesshProxyCommandShellQuotesDynamicValues(t *testing.T) {
 func TestRunExternalCommandRejectsUnsupportedBinary(t *testing.T) {
 	t.Parallel()
 
-	err := runExternalCommand("sh", []string{"-c", "true"}, nil, nil, nil, io.Discard, io.Discard)
+	err := runExternalCommand(context.Background(), "sh", []string{"-c", "true"}, nil, nil, nil, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "unsupported external command") {
 		t.Fatalf("expected unsupported command error, got %v", err)
 	}

@@ -90,11 +90,12 @@ func (connectIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host s
 
 type connectTransport struct{}
 
-func (connectTransport) Connect(_ context.Context, req connectapp.TransportRequest) error {
-	return executeSSH(req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.Stdin, req.Stdout, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
+func (connectTransport) Connect(ctx context.Context, req connectapp.TransportRequest) error {
+	return executeSSH(ctx, req.Config, req.Host, req.UserName, req.Auth, req.SSHArgs, req.Stdin, req.Stdout, req.ErrOut, req.Agent.Socket, req.Agent.Capability)
 }
 
 func executeSSH(
+	ctx context.Context,
 	cfg store.PlainConfig,
 	host store.HostConfig,
 	userName string,
@@ -144,7 +145,7 @@ func executeSSH(
 		return err
 	}
 	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, stdin, stdout, errOut)
+	return runExternalCommand(ctx, binary, args, env, extraFiles, stdin, stdout, errOut)
 }
 
 func buildRemoteHookCommand(preConnect, postConnect []string) string {
@@ -154,11 +155,17 @@ func buildRemoteHookCommand(preConnect, postConnect []string) string {
 		return ""
 	}
 
-	lines := make([]string, 0, len(preparedPre)+len(preparedPost)+5)
+	// set -e protects PreConnect commands (any failure aborts before opening the shell).
+	// We disable it around the interactive shell so that a non-zero exit code from the
+	// user's shell does not skip PostConnect — `set -e` would otherwise terminate the
+	// outer script at the `${SHELL} -i` line and never reach PostConnect.
+	lines := make([]string, 0, len(preparedPre)+len(preparedPost)+7)
 	lines = append(lines, "set -e")
 	lines = append(lines, preparedPre...)
+	lines = append(lines, "set +e")
 	lines = append(lines, "${SHELL:-/bin/sh} -i")
 	lines = append(lines, "onessh_status=$?")
+	lines = append(lines, "set -e")
 	lines = append(lines, preparedPost...)
 	lines = append(lines, "exit $onessh_status")
 

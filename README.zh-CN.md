@@ -13,7 +13,7 @@ OneSSH 是以单一主密码为核心的 CLI SSH 管理工具。主机、凭证�
 安装后的最小流程：创建加密数据目录、登记一台主机、查看列表、再进入会话。请将 `web1` 换成你自己的主机别名。
 
 ```bash
-# Create ~/.onessh (or $ONESSH_HOME) and set the master password used to encrypt secrets
+# 创建 ~/.config/onessh/data（可用 --data 或 $ONESSH_DATA 覆盖）并设置加密所用主密码
 onessh init
 # Interactive wizard: host, user, auth (key/password), optional port and labels
 onessh add web1

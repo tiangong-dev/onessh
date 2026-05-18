@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -62,6 +63,6 @@ func withPasswordAuth(binary string, args []string, auth store.AuthConfig, env [
 	return result.Binary, result.Args, result.Env, result.ExtraFiles, result.Cleanup, nil
 }
 
-func runExternalCommand(binary string, args []string, env []string, extraFiles []*os.File, stdin io.Reader, stdout, stderr io.Writer) error {
-	return infrassh.RunExternalCommand(binary, args, env, extraFiles, stdin, stdout, stderr)
+func runExternalCommand(ctx context.Context, binary string, args []string, env []string, extraFiles []*os.File, stdin io.Reader, stdout, stderr io.Writer) error {
+	return infrassh.RunExternalCommand(ctx, binary, args, env, extraFiles, stdin, stdout, stderr)
 }

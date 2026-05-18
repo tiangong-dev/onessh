@@ -9,7 +9,7 @@ For threat model and security controls, see [Security](/reference/security).
 - **Single master-password UX** for encrypted host/user configuration.
 - **Git-friendly encrypted storage** (`ENC[...]` fields in YAML).
 - **Memory-only runtime secret cache** via local agent.
-- **Unified SSH operations** (interactive `onessh <alias>`, `exec`, `cp`, `test`) over the same config model.
+- **Unified SSH operations** (interactive `onessh <alias>`, `exec`, `cp`, `ping`) over the same config model.
 - **Simple local namespacing model** by default (agent socket/capability derived from parent shell PID for convenience, not as a strong same-UID security boundary).
 
 ## 2. High-Level Component Map
@@ -34,7 +34,7 @@ flowchart LR
   - Binary entrypoint, version/build wiring.
 - `internal/cli`
   - Command definitions, option parsing, and adapter wiring.
-  - Agent protocol integration and askpass fallback logic while migration is in progress.
+  - Agent protocol integration and askpass fallback logic.
   - Batch command adapter wiring (`--all`, `--tag`, `--filter`, `--parallel`).
 - `internal/app`
   - Use-case services for connect, exec, copy, host/user management, and shared batch behavior.
@@ -126,7 +126,7 @@ Two broad command families:
    - `init`, `add`, `update`, `rm`, `user *`, `passwd`, `show`, `ls`
    - Mainly operate on decrypted config model and write encrypted store back.
 2. **Remote operation commands**
-   - Root invocation `onessh <alias>` (interactive SSH; no `connect` subcommand), plus `exec`, `cp`, `test`
+   - Root invocation `onessh <alias>` (interactive SSH; no `connect` subcommand), plus `exec`, `cp`, `ping`
    - Resolve host + user profile, then invoke SSH transport adapters.
 
 ### 7.1 Remote operation pipeline

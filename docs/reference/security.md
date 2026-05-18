@@ -89,12 +89,10 @@ Token controls:
 
 `SaveWithReset` path is validated before recursive deletion:
 
-- rejects dangerous targets (`/`, empty, `.`)
-- requires directory type
-- for non-empty directories, requires OneSSH store shape (`meta.yaml`, `users`, `hosts`)
-- rejects unexpected extra entries
+- rejects dangerous targets (empty, `/`, `.`)
+- if the path exists, requires it to be a directory (non-existent paths are allowed and created)
 
-This reduces accidental destructive deletions caused by wrong config path.
+This reduces the most obvious accidental destructive deletions caused by a wrong data path. It does **not** verify OneSSH store shape (`meta.yaml`, `users`, `hosts`) or reject extra entries inside the target directory.
 
 ## 5. Current Threat Model Notes
 

@@ -99,11 +99,11 @@ func (pingIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host stor
 
 type pingRunner struct{}
 
-func (pingRunner) Ping(_ context.Context, req connectivityapp.Request) error {
-	return runSSHTest(req.Config, req.Host, req.UserName, req.Auth, req.Timeout.Seconds, req.Agent.Socket, req.Agent.Capability)
+func (pingRunner) Ping(ctx context.Context, req connectivityapp.Request) error {
+	return runSSHTest(ctx, req.Config, req.Host, req.UserName, req.Auth, req.Timeout.Seconds, req.Agent.Socket, req.Agent.Capability)
 }
 
-func runSSHTest(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
+func runSSHTest(ctx context.Context, cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
 	args := []string{
 		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
 	}
@@ -123,5 +123,5 @@ func runSSHTest(cfg store.PlainConfig, host store.HostConfig, userName string, a
 		return err
 	}
 	defer cleanup()
-	return runExternalCommand(binary, args, env, extraFiles, nil, nil, nil)
+	return runExternalCommand(ctx, binary, args, env, extraFiles, nil, nil, nil)
 }

@@ -19,7 +19,7 @@ cd onessh
 make build
 ```
 
-可执行文件 `onessh` 会生成在仓库根目录。
+可执行文件会生成在仓库根目录下的 `bin/onessh`。
 
 ## 初始化
 
