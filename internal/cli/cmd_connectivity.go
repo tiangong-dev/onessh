@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	connectivityapp "onessh/internal/app/connectivity"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -57,19 +59,24 @@ func newPingCmd(opts *rootOptions) *cobra.Command {
 				return errors.New("specify <host-alias> or use --all/--tag/--filter")
 			}
 			alias := strings.TrimSpace(args[0])
-			target, exists := cfg.Hosts[alias]
-			if !exists {
-				return fmt.Errorf("host %q not found", alias)
+			service := connectivityapp.Service{
+				IdentityResolver: pingIdentityResolver{},
+				Runner:           pingRunner{},
+				Audit:            opts.auditSink(),
 			}
-			userName, auth, err := resolveHostIdentity(cfg, target)
-			if err != nil {
-				return err
-			}
-			if testErr := runSSHTest(cfg, target, userName, auth, timeout, opts.agentSocket, opts.agentCapability); testErr != nil {
-				opts.logEvent("ping", alias, target.Host, userName, "fail", testErr)
+			if _, testErr := service.Ping(cmd.Context(), connectivityapp.Input{
+				Config: cfg,
+				Alias:  alias,
+				Timeout: connectivityapp.TimeoutConfig{
+					Seconds: timeout,
+				},
+				Agent: connectivityapp.AgentConfig{
+					Socket:     opts.agentSocket,
+					Capability: opts.agentCapability,
+				},
+			}); testErr != nil {
 				return fmt.Errorf("connectivity check failed: %w", testErr)
 			}
-			opts.logEvent("ping", alias, target.Host, userName, "ok", nil)
 			fmt.Fprintf(cmd.OutOrStdout(), "✔ %s is reachable\n", alias)
 			return nil
 		},
@@ -82,6 +89,18 @@ func newPingCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
+}
+
+type pingIdentityResolver struct{}
+
+func (pingIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+	return resolveHostIdentity(cfg, host)
+}
+
+type pingRunner struct{}
+
+func (pingRunner) Ping(_ context.Context, req connectivityapp.Request) error {
+	return runSSHTest(req.Config, req.Host, req.UserName, req.Auth, req.Timeout.Seconds, req.Agent.Socket, req.Agent.Capability)
 }
 
 func runSSHTest(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, timeoutSec int, agentSocket, agentCapability string) error {
