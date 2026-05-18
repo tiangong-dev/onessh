@@ -1,15 +1,13 @@
 package cli
 
 import (
-	"regexp"
 	"time"
 
-	"onessh/internal/audit"
+	"onessh/internal/infra/audit"
+	"onessh/internal/ports"
 
 	"github.com/spf13/cobra"
 )
-
-var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const redactedSecretValue = "[REDACTED]"
 
@@ -22,6 +20,13 @@ type rootOptions struct {
 	quiet           bool
 	log             bool
 	auditLog        *audit.Logger
+}
+
+func (o *rootOptions) auditSink() ports.Audit {
+	if o.auditLog == nil {
+		return nil
+	}
+	return audit.PortLoggerAdapter{Logger: o.auditLog}
 }
 
 func NewRootCmd(version, commit, date string) *cobra.Command {

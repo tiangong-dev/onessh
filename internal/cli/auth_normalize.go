@@ -3,18 +3,12 @@ package cli
 import (
 	"strings"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 )
 
 func normalizeAuthType(input string) string {
-	switch strings.ToLower(strings.TrimSpace(input)) {
-	case "1", "k", "key":
-		return "key"
-	case "2", "p", "pass", "password":
-		return "password"
-	default:
-		return ""
-	}
+	return string(domain.NormalizeAuthType(input))
 }
 
 func summarizeAuth(auth store.AuthConfig) string {

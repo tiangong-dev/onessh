@@ -16,10 +16,16 @@ For threat model and security controls, see [Security](/reference/security).
 
 ```mermaid
 flowchart LR
-  CLI["CLI layer (cobra)\ninternal/cli"] --> STORE["Encrypted repository\ninternal/store"]
-  CLI --> AGENT["In-memory cache agent\nshush over unix socket"]
-  CLI --> SSH["SSH adapters\nssh/scp/sshpass/askpass"]
-  CLI --> AUDIT["Audit logger\ninternal/audit"]
+  CLI["CLI adapter (cobra)\ninternal/cli"] --> APP["Application services\ninternal/app/*"]
+  CLI --> PRESENTERS["Output presenters\ninternal/presenters"]
+  APP --> PORTS["Ports\ninternal/ports"]
+  APP --> DOMAIN["Domain rules\ninternal/domain"]
+  APP --> RUNTIME["Runtime IO/config\ninternal/runtime"]
+  PORTS --> INFRA["Infrastructure adapters\ninternal/infra/*"]
+  INFRA --> STORE["Encrypted repository\ninternal/store"]
+  INFRA --> AGENT["In-memory cache agent\nshush over unix socket"]
+  INFRA --> SSH["SSH adapters\nssh/scp/sshpass/askpass"]
+  INFRA --> AUDIT["Audit logger\ninternal/audit"]
 ```
 
 ## 3. Repository Layout (Core Modules)
@@ -27,14 +33,37 @@ flowchart LR
 - `cmd/onessh`
   - Binary entrypoint, version/build wiring.
 - `internal/cli`
-  - Command definitions, option parsing, command orchestration.
-  - Agent protocol integration and askpass fallback logic.
-  - Batch execution orchestration (`--all`, `--tag`, `--filter`, `--parallel`).
+  - Command definitions, option parsing, and adapter wiring.
+  - Agent protocol integration and askpass fallback logic while migration is in progress.
+  - Batch command adapter wiring (`--all`, `--tag`, `--filter`, `--parallel`).
+- `internal/app`
+  - Use-case services for connect, exec, copy, host/user management, and shared batch behavior.
+  - Owns per-operation audit decisions and keeps audit sink failures non-blocking.
+- `internal/domain`
+  - Pure host/user/auth/tag/default rules with no IO.
+- `internal/runtime`
+  - Runtime-only structures such as IO streams and audit/cache configuration.
+- `internal/ports`
+  - Narrow interfaces that app services depend on, such as audit and identity resolution.
+- `internal/infra`
+  - Adapters from ports to existing store, audit, SSH, and agent implementations.
+- `internal/presenters`
+  - Output formatting for tables, JSON, and batch results; no persistence or transport side effects.
 - `internal/store`
   - Config encryption/decryption, YAML persistence, KDF/cipher handling.
   - Data validation and reset safety checks.
 - `internal/audit`
   - Optional audit logging and rotation.
+
+## 3.1 Layer Consistency Rules
+
+- `domain` stays pure and deterministic. It can be used by `app`, `cli`, and tests without opening files, sockets, or processes.
+- `runtime` describes per-run concerns (IO streams, cache/audit settings) and does not persist configuration.
+- `app` coordinates use cases. It validates inputs, resolves identities through ports, invokes runners/adapters, and records audit outcomes through the audit port.
+- `ports` define stable boundaries owned by the application layer; infrastructure implements them.
+- `infra` adapts external systems and legacy implementations (`store`, audit logger, SSH/agent execution) without pushing those details back into `app`.
+- `presenters` only render already-computed results. They must not load config, run SSH, mutate stores, or write audit records.
+- `store` remains the encrypted persistence engine and transaction boundary for config data. Application and CLI code should go through repository/adapters instead of reimplementing persistence.
 
 ## 4. Data Model and Persistence
 
@@ -123,6 +152,7 @@ flowchart TD
 - `--parallel` bounds goroutine worker concurrency.
 - Per-host result buffers are collected and printed in stable order.
 - Any host failure marks overall batch result as failed.
+- When audit logging is enabled, batch `exec`, `cp`, and `ping` record one audit event per host. Successful hosts are logged as `ok`, remote failures as `fail`, and identity-resolution skips as `skip`; audit sink errors are deliberately ignored so they do not change command results.
 
 ## 8. Agent and AskPass Integration
 

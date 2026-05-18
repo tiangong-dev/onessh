@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,21 @@ func writeYAMLAtomic(path string, data any) error {
 	}
 	defer zeroBytes(encoded)
 
+	return writeFileAtomic(path, encoded)
+}
+
+func copyFileAtomic(srcPath, dstPath string) error {
+	raw, err := os.ReadFile(srcPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return fmt.Errorf("read file %s: %w", srcPath, err)
+	}
+	return writeFileAtomic(dstPath, raw)
+}
+
+func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
@@ -54,7 +70,7 @@ func writeYAMLAtomic(path string, data any) error {
 		cleanup()
 		return fmt.Errorf("chmod temp file for %s: %w", path, err)
 	}
-	if _, err := tempFile.Write(encoded); err != nil {
+	if _, err := tempFile.Write(data); err != nil {
 		cleanup()
 		return fmt.Errorf("write temp file for %s: %w", path, err)
 	}
@@ -74,6 +90,106 @@ func writeYAMLAtomic(path string, data any) error {
 		return fmt.Errorf("chmod file %s: %w", path, err)
 	}
 	return nil
+}
+
+func backupManagedStoreFiles(srcRepo, backupRepo Repository) error {
+	if _, err := os.Stat(srcRepo.metaPath()); err == nil {
+		if err := copyFileAtomic(srcRepo.metaPath(), backupRepo.metaPath()); err != nil {
+			return err
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := copyYAMLFiles(srcRepo.usersDir(), backupRepo.usersDir()); err != nil {
+		return err
+	}
+	if err := copyYAMLFiles(srcRepo.hostsDir(), backupRepo.hostsDir()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func applyManagedStoreFiles(srcRepo, dstRepo Repository) error {
+	if err := copyFileAtomic(srcRepo.metaPath(), dstRepo.metaPath()); err != nil {
+		return err
+	}
+	if err := syncManagedYAMLDir(srcRepo.usersDir(), dstRepo.usersDir()); err != nil {
+		return err
+	}
+	if err := syncManagedYAMLDir(srcRepo.hostsDir(), dstRepo.hostsDir()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func restoreManagedStoreFiles(backupRepo, dstRepo Repository) error {
+	if _, err := os.Stat(backupRepo.metaPath()); err == nil {
+		if err := copyFileAtomic(backupRepo.metaPath(), dstRepo.metaPath()); err != nil {
+			return err
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		if err := os.Remove(dstRepo.metaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	} else {
+		return err
+	}
+	if err := syncManagedYAMLDir(backupRepo.usersDir(), dstRepo.usersDir()); err != nil {
+		return err
+	}
+	if err := syncManagedYAMLDir(backupRepo.hostsDir(), dstRepo.hostsDir()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func syncManagedYAMLDir(srcDir, dstDir string) error {
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		return fmt.Errorf("ensure managed directory %s: %w", dstDir, err)
+	}
+
+	keep := map[string]struct{}{}
+	files, err := os.ReadDir(srcDir)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read managed directory %s: %w", srcDir, err)
+		}
+		return cleanupStaleYAMLFiles(dstDir, keep)
+	}
+	for _, file := range files {
+		if !isManagedYAMLFile(file) {
+			continue
+		}
+		alias := strings.TrimSuffix(file.Name(), ".yaml")
+		if err := copyFileAtomic(filepath.Join(srcDir, file.Name()), filepath.Join(dstDir, file.Name())); err != nil {
+			return err
+		}
+		keep[alias] = struct{}{}
+	}
+	return cleanupStaleYAMLFiles(dstDir, keep)
+}
+
+func copyYAMLFiles(srcDir, dstDir string) error {
+	files, err := os.ReadDir(srcDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read managed directory %s: %w", srcDir, err)
+	}
+	for _, file := range files {
+		if !isManagedYAMLFile(file) {
+			continue
+		}
+		if err := copyFileAtomic(filepath.Join(srcDir, file.Name()), filepath.Join(dstDir, file.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isManagedYAMLFile(entry fs.DirEntry) bool {
+	return !entry.IsDir() && filepath.Ext(entry.Name()) == ".yaml"
 }
 
 func cleanupStaleYAMLFiles(dir string, keep map[string]struct{}) error {
@@ -114,34 +230,6 @@ func validateResetPath(path string) error {
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("config store path is not a directory: %s", target)
-	}
-
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return fmt.Errorf("read config store path %s: %w", target, err)
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-
-	allowed := map[string]struct{}{
-		metaFileName: {},
-		usersDirName: {},
-		hostsDirName: {},
-	}
-
-	hasMeta := false
-	for _, entry := range entries {
-		name := entry.Name()
-		if _, ok := allowed[name]; !ok {
-			return fmt.Errorf("refuse to reset non-onessh directory %s (unexpected entry %q)", target, name)
-		}
-		if name == metaFileName {
-			hasMeta = true
-		}
-	}
-	if !hasMeta {
-		return fmt.Errorf("refuse to reset directory %s without %s", target, metaFileName)
 	}
 	return nil
 }

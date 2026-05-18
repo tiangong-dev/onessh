@@ -3,9 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
+	"onessh/internal/domain"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -202,21 +202,7 @@ func applyUserProfileUpdateFlags(
 }
 
 func normalizeTags(tags []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(tags))
-	for _, t := range tags {
-		t = strings.ToLower(strings.TrimSpace(t))
-		if t == "" {
-			continue
-		}
-		if _, dup := seen[t]; dup {
-			continue
-		}
-		seen[t] = struct{}{}
-		out = append(out, t)
-	}
-	sort.Strings(out)
-	return out
+	return domain.NormalizeTags(tags)
 }
 
 func applyHostTagUpdateFlags(cmd *cobra.Command, host *store.HostConfig, tags, unsetTags []string, clearTags bool) {

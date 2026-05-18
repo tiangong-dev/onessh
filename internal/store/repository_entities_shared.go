@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"onessh/internal/domain"
 )
 
 func sortedKeys[T any](m map[string]T) []string {
@@ -26,12 +28,5 @@ func validateAlias(alias string) error {
 }
 
 func normalizeAuthTypeStore(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "key":
-		return "key"
-	case "password":
-		return "password"
-	default:
-		return ""
-	}
+	return string(domain.NormalizeStoredAuthType(value))
 }

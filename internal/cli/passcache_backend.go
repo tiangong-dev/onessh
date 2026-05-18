@@ -1,21 +1,20 @@
 package cli
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	infraagent "onessh/internal/infra/agent"
+	appruntime "onessh/internal/runtime"
 )
 
 const (
-	defaultCacheTTL = 10 * time.Minute
+	defaultCacheTTL = appruntime.DefaultCacheTTL
 	// #nosec G101 -- this is a public cache-key namespace, not secret material.
 	cacheKeyNamespaceV1      = "onessh:passphrase:v1:"
-	onesshAgentCapabilityEnv = "ONESSH_AGENT_CAPABILITY"
+	onesshAgentCapabilityEnv = infraagent.AgentCapabilityEnv
 )
 
 type passphraseStore interface {
@@ -26,51 +25,27 @@ type passphraseStore interface {
 }
 
 func defaultAgentSocketFlagValue() string {
-	if raw := strings.TrimSpace(os.Getenv("ONESSH_AGENT_SOCKET")); raw != "" {
-		return raw
-	}
-	return ""
+	return infraagent.DefaultSocketFlagValue()
 }
 
 func defaultAgentCapabilityFlagValue() string {
-	if raw := strings.TrimSpace(os.Getenv(onesshAgentCapabilityEnv)); raw != "" {
-		return raw
-	}
-	return ""
+	return infraagent.DefaultCapabilityFlagValue()
 }
 
 func resolveAgentCapability(explicit string) string {
-	if raw := strings.TrimSpace(explicit); raw != "" {
-		return raw
-	}
-	if fromEnv := defaultAgentCapabilityFlagValue(); fromEnv != "" {
-		return fromEnv
-	}
-	// Auto-derive a stable per-shell-session capability.
-	return deriveSessionCapability(defaultAgentSessionID())
+	return infraagent.ResolveCapabilityFromEnv(explicit)
 }
 
 func defaultAgentSessionID() string {
-	return fmt.Sprintf("uid:%d:ppid:%d", os.Getuid(), os.Getppid())
+	return infraagent.DefaultSessionID()
 }
 
 func deriveSessionCapability(sessionID string) string {
-	sum := sha256.Sum256([]byte("onessh:agent:cap:v1:" + sessionID))
-	return hex.EncodeToString(sum[:])
+	return infraagent.DeriveSessionCapability(sessionID)
 }
 
 func defaultAgentSocketPath() (string, error) {
-	socketName := "agent-" + fmt.Sprintf("%d", os.Getppid()) + ".sock"
-
-	if runtimeDir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); runtimeDir != "" {
-		return filepath.Join(runtimeDir, "onessh", socketName), nil
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	return filepath.Join(homeDir, ".config", "onessh", "agents", socketName), nil
+	return infraagent.DefaultSocketPathFromEnv()
 }
 
 func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) {
@@ -82,10 +57,7 @@ func (o *rootOptions) passphraseStore(dataPath string) (passphraseStore, error) 
 }
 
 func normalizeTTL(ttl time.Duration) time.Duration {
-	if ttl <= 0 {
-		return defaultCacheTTL
-	}
-	return ttl
+	return appruntime.NormalizeCacheTTL(ttl)
 }
 
 func canonicalCacheKey(dataPath string) string {

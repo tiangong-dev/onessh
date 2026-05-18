@@ -1,23 +1,22 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os/user"
-	"text/tabwriter"
 
-	"onessh/internal/audit"
-	"onessh/internal/store"
+	"onessh/internal/infra/audit"
+	"onessh/internal/infra/repository"
+	"onessh/internal/presenters"
 
 	"github.com/spf13/cobra"
 )
 
-func (o *rootOptions) repository() (store.Repository, error) {
-	path, err := store.ResolvePath(o.dataPath)
+func (o *rootOptions) repository() (repository.Repository, error) {
+	path, err := repository.ResolvePath(o.dataPath)
 	if err != nil {
-		return store.Repository{}, err
+		return repository.Repository{}, err
 	}
-	return store.Repository{Path: path}, nil
+	return repository.Repository{Path: path}, nil
 }
 
 func (o *rootOptions) logEvent(action, alias, host, user, result string, err error) {
@@ -68,41 +67,7 @@ func newLogCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(events) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No audit log entries.")
-				return nil
-			}
-
-			if normalizedFormat == "json" {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(events)
-			}
-
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "TIME\tACTION\tALIAS\tHOST\tUSER\tRESULT\tERROR")
-			for _, e := range events {
-				errMsg := "-"
-				if e.Error != "" {
-					errMsg = e.Error
-				}
-				aliasCol := e.Alias
-				if aliasCol == "" {
-					aliasCol = "-"
-				}
-				hostCol := e.Host
-				if hostCol == "" {
-					hostCol = "-"
-				}
-				userCol := e.User
-				if userCol == "" {
-					userCol = "-"
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					e.Time, e.Action, aliasCol, hostCol, userCol, e.Result, errMsg)
-			}
-			_ = w.Flush()
-			return nil
+			return presenters.RenderAuditLog(cmd.OutOrStdout(), toPresenterAuditLogEvents(events), normalizedFormat)
 		},
 	}
 	cmd.Flags().IntVarP(&last, "last", "n", 20, "Number of recent entries to show (0=all)")
@@ -192,4 +157,21 @@ func currentUserName() string {
 		return "root"
 	}
 	return u.Username
+}
+
+func toPresenterAuditLogEvents(events []audit.Event) []presenters.AuditLogEvent {
+	rows := make([]presenters.AuditLogEvent, len(events))
+	for i, event := range events {
+		rows[i] = presenters.AuditLogEvent{
+			Time:   event.Time,
+			Action: event.Action,
+			Alias:  event.Alias,
+			Host:   event.Host,
+			User:   event.User,
+			Result: event.Result,
+			Error:  event.Error,
+			Extra:  event.Extra,
+		}
+	}
+	return rows
 }

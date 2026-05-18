@@ -16,10 +16,16 @@
 
 ```mermaid
 flowchart LR
-  CLI["CLI 层 (cobra)\ninternal/cli"] --> STORE["加密仓库\ninternal/store"]
-  CLI --> AGENT["内存缓存 agent\nshush unix socket"]
-  CLI --> SSH["SSH 适配\nssh/scp/sshpass/askpass"]
-  CLI --> AUDIT["审计日志\ninternal/audit"]
+  CLI["CLI 适配层 (cobra)\ninternal/cli"] --> APP["应用服务\ninternal/app/*"]
+  CLI --> PRESENTERS["输出呈现\ninternal/presenters"]
+  APP --> PORTS["端口\ninternal/ports"]
+  APP --> DOMAIN["领域规则\ninternal/domain"]
+  APP --> RUNTIME["运行时 IO/配置\ninternal/runtime"]
+  PORTS --> INFRA["基础设施适配\ninternal/infra/*"]
+  INFRA --> STORE["加密仓库\ninternal/store"]
+  INFRA --> AGENT["内存缓存 agent\nshush unix socket"]
+  INFRA --> SSH["SSH 适配\nssh/scp/sshpass/askpass"]
+  INFRA --> AUDIT["审计日志\ninternal/audit"]
 ```
 
 ## 3. 仓库布局（核心模块）
@@ -27,14 +33,37 @@ flowchart LR
 - `cmd/onessh`
   - 二进制入口、版本与构建信息。
 - `internal/cli`
-  - 命令定义、参数解析、编排。
-  - Agent 协议与 askpass 回退逻辑。
-  - 批量执行（`--all`、`--tag`、`--filter`、`--parallel`）。
+  - 命令定义、参数解析与适配层接线。
+  - 重构迁移期间仍承载 agent 协议与 askpass 回退逻辑。
+  - 批量命令适配（`--all`、`--tag`、`--filter`、`--parallel`）。
+- `internal/app`
+  - connect、exec、copy、host/user 管理，以及共享 batch 行为的用例服务。
+  - 负责每次操作的审计决策，并保证审计 sink 失败不影响主流程。
+- `internal/domain`
+  - 纯 host/user/auth/tag/default 规则，无 IO。
+- `internal/runtime`
+  - 仅描述运行时关注点，例如 IO streams、缓存与审计配置。
+- `internal/ports`
+  - 应用层依赖的窄接口，例如 audit 与 identity resolution。
+- `internal/infra`
+  - 将端口适配到现有 store、audit、SSH 与 agent 实现。
+- `internal/presenters`
+  - 表格、JSON 与 batch 结果输出格式化；不做持久化或传输副作用。
 - `internal/store`
   - 配置加解密、YAML 持久化、KDF/密码处理。
   - 数据校验与强制重置安全检查。
 - `internal/audit`
   - 可选审计日志与轮转。
+
+## 3.1 分层一致性规则
+
+- `domain` 保持纯净且确定性。`app`、`cli` 与测试可以使用它，但它不打开文件、socket 或进程。
+- `runtime` 描述单次运行的关注点（IO streams、cache/audit 设置），不负责持久化配置。
+- `app` 编排用例：校验输入，通过端口解析身份，调用 runner/adapter，并通过 audit 端口记录结果。
+- `ports` 定义应用层拥有的稳定边界，由基础设施层实现。
+- `infra` 适配外部系统与遗留实现（`store`、audit logger、SSH/agent 执行），避免这些细节反向进入 `app`。
+- `presenters` 只渲染已经计算出的结果。它们不加载配置、不运行 SSH、不修改 store，也不写审计。
+- `store` 仍是加密配置的持久化引擎与事务边界。应用与 CLI 代码应通过 repository/adapter 使用它，而不是重新实现持久化。
 
 ## 4. 数据模型与持久化
 
@@ -122,6 +151,7 @@ flowchart TD
 - `--parallel` 限制 goroutine 并发度。
 - 按主机收集结果，以稳定顺序输出。
 - 任一主机失败则整批视为失败。
+- 启用审计时，批量 `exec`、`cp` 与 `ping` 会按主机分别记录审计事件。成功主机记为 `ok`，远端执行失败记为 `fail`，身份解析失败导致的跳过记为 `skip`；审计 sink 错误会被有意忽略，不改变命令结果。
 
 ## 8. Agent 与 AskPass 集成
 

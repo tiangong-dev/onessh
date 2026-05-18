@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	execapp "onessh/internal/app/exec"
+	"onessh/internal/presenters"
+	appruntime "onessh/internal/runtime"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -43,12 +46,13 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				}
 
 				if dryRun {
-					printDryRunHosts(cmd.OutOrStdout(), cfg, aliases)
-					fmt.Fprintf(cmd.OutOrStdout(), "Command: %s\n", strings.Join(args, " "))
-					return nil
+					if err := printDryRunHosts(cmd.OutOrStdout(), cfg, aliases); err != nil {
+						return err
+					}
+					return presenters.RenderDryRunCommand(cmd.OutOrStdout(), args)
 				}
 
-				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability)
+				anyFailed := runBatchExec(cmd, cfg, aliases, args, parallel, opts.agentSocket, opts.agentCapability, opts.auditSink())
 				if anyFailed {
 					return errors.New("one or more hosts failed")
 				}
@@ -63,20 +67,24 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 				return errors.New("host alias cannot be empty")
 			}
 
-			target, exists := cfg.Hosts[alias]
-			if !exists {
-				return fmt.Errorf("host %q not found", alias)
+			service := execapp.Service{
+				IdentityResolver: execIdentityResolver{},
+				Runner:           execRemoteRunner{},
+				Audit:            opts.auditSink(),
 			}
-			userName, auth, err := resolveHostIdentity(cfg, target)
-			if err != nil {
-				return err
-			}
-			execErr := executeRemoteCmd(cfg, target, userName, auth, args[1:], opts.agentSocket, opts.agentCapability, nil, nil)
-			if execErr != nil {
-				opts.logEvent("exec", alias, target.Host, userName, "fail", execErr)
-			} else {
-				opts.logEvent("exec", alias, target.Host, userName, "ok", nil)
-			}
+			_, execErr := service.Exec(cmd.Context(), execapp.Input{
+				Config:    cfg,
+				Alias:     alias,
+				RemoteCmd: args[1:],
+				Agent: execapp.AgentConfig{
+					Socket:     opts.agentSocket,
+					Capability: opts.agentCapability,
+				},
+				IO: appruntime.IOStreams{
+					Out:    cmd.OutOrStdout(),
+					ErrOut: cmd.ErrOrStderr(),
+				},
+			})
 			return execErr
 		},
 	}
@@ -87,6 +95,18 @@ func newExecCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().IntVar(&parallel, "parallel", 1, "Max concurrent operations in batch mode")
 	cmd.ValidArgsFunction = completionHostAliases(opts)
 	return cmd
+}
+
+type execIdentityResolver struct{}
+
+func (execIdentityResolver) ResolveHostIdentity(cfg store.PlainConfig, host store.HostConfig) (string, store.AuthConfig, error) {
+	return resolveHostIdentity(cfg, host)
+}
+
+type execRemoteRunner struct{}
+
+func (execRemoteRunner) ExecRemote(_ context.Context, req execapp.RemoteRequest) error {
+	return executeRemoteCmd(req.Config, req.Host, req.UserName, req.Auth, req.RemoteCmd, req.Agent.Socket, req.Agent.Capability, req.Stdout, req.Stderr)
 }
 
 func executeRemoteCmd(cfg store.PlainConfig, host store.HostConfig, userName string, auth store.AuthConfig, remoteCmd []string, agentSocket, agentCapability string, stdout, stderr io.Writer) error {

@@ -1,72 +1,62 @@
 package cli
 
 import (
-	"fmt"
 	"io"
-	"path/filepath"
 	"sort"
-	"strings"
 
+	"onessh/internal/domain"
+	"onessh/internal/presenters"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
 )
 
 func hostHasTag(host store.HostConfig, tag string) bool {
-	tag = strings.ToLower(strings.TrimSpace(tag))
-	for _, t := range host.Tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
+	return domain.HostHasTag(host.Tags, tag)
 }
 
-func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) {
-	fmt.Fprintf(out, "Matched %d host(s):\n", len(aliases))
+func printDryRunHosts(out io.Writer, cfg store.PlainConfig, aliases []string) error {
+	return presenters.RenderDryRunHosts(out, buildDryRunHosts(cfg, aliases))
+}
+
+func buildDryRunHosts(cfg store.PlainConfig, aliases []string) []presenters.DryRunHost {
+	rows := make([]presenters.DryRunHost, 0, len(aliases))
 	for _, alias := range aliases {
 		host := cfg.Hosts[alias]
-		port := host.Port
-		if port <= 0 {
-			port = 22
-		}
+		port := domain.EffectivePort(host.Port)
 		userName, _, err := resolveHostIdentity(cfg, host)
-		if err != nil {
-			fmt.Fprintf(out, "  %-20s %s (SKIP: %v)\n", alias, host.Host, err)
-		} else {
-			fmt.Fprintf(out, "  %-20s %s@%s:%d\n", alias, userName, host.Host, port)
+		row := presenters.DryRunHost{
+			Alias: alias,
+			Host:  host.Host,
+			User:  userName,
+			Port:  port,
 		}
+		if err != nil {
+			row.SkipError = err.Error()
+		}
+		rows = append(rows, row)
 	}
+	return rows
 }
 
 func collectFilteredHosts(cfg store.PlainConfig, tag, filter string) []string {
-	aliases := make([]string, 0, len(cfg.Hosts))
-	for alias := range cfg.Hosts {
-		if tag != "" && !hostHasTag(cfg.Hosts[alias], tag) {
-			continue
+	hosts := make(map[string]domain.HostQuery, len(cfg.Hosts))
+	for alias, host := range cfg.Hosts {
+		hosts[alias] = domain.HostQuery{
+			Address:     host.Host,
+			Description: host.Description,
+			Tags:        host.Tags,
 		}
-		if filter != "" && !matchHostFilter(alias, cfg.Hosts[alias], filter) {
-			continue
-		}
-		aliases = append(aliases, alias)
 	}
-	sort.Strings(aliases)
-	return aliases
+	return domain.CollectFilteredHosts(hosts, tag, filter)
 }
 
 func matchHostFilter(alias string, host store.HostConfig, pattern string) bool {
-	if matched, _ := filepath.Match(pattern, alias); matched {
-		return true
-	}
-	if matched, _ := filepath.Match(pattern, host.Host); matched {
-		return true
-	}
-	if host.Description != "" {
-		if matched, _ := filepath.Match(pattern, host.Description); matched {
-			return true
-		}
-	}
-	return false
+	return domain.MatchHostFilter(alias, domain.HostQuery{
+		Address:     host.Host,
+		Description: host.Description,
+		Tags:        host.Tags,
+	}, pattern)
 }
 
 // completionHostAliases returns a ValidArgsFunction that completes host aliases

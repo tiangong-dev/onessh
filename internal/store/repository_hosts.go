@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"onessh/internal/domain"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -63,9 +65,7 @@ func (r Repository) loadHosts(cfg *PlainConfig, key []byte) error {
 			PreConnect:  make([]string, 0, len(doc.PreConnect)),
 			PostConnect: make([]string, 0, len(doc.PostConnect)),
 		}
-		if hostCfg.Port <= 0 {
-			hostCfg.Port = 22
-		}
+		hostCfg.Port = domain.EffectivePort(hostCfg.Port)
 		for k, encVal := range doc.Env {
 			plainVal, err := decryptStringField(encVal, key)
 			if err != nil {
@@ -145,9 +145,7 @@ func (r Repository) syncHosts(cfg PlainConfig, key []byte) error {
 			PreConnect:  make([]string, 0, len(hostCfg.PreConnect)),
 			PostConnect: make([]string, 0, len(hostCfg.PostConnect)),
 		}
-		if doc.Port <= 0 {
-			doc.Port = 22
-		}
+		doc.Port = domain.EffectivePort(doc.Port)
 
 		var err error
 		doc.Host, err = encryptStringField(hostValue, key)

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	apphosts "onessh/internal/app/hosts"
 	"onessh/internal/store"
 
 	"github.com/spf13/cobra"
@@ -139,7 +140,16 @@ func newAddCmd(opts *rootOptions) *cobra.Command {
 			if cmd.Flags().Changed("description") {
 				newHost.Description = strings.TrimSpace(description)
 			}
-			cfg.Hosts[alias] = newHost
+			added, err := apphosts.Service{}.Add(apphosts.AddInput{
+				Config: cfg,
+				Alias:  alias,
+				Host:   newHost,
+			})
+			if err != nil {
+				return err
+			}
+			cfg = added.Config
+			newHost = added.Host
 
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
@@ -211,56 +221,44 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 
 			targetAlias := alias
 			updatedHost := existing
+			updatedWithService := false
 
 			if hasAnyHostUpdateFlags(cmd) {
-				if cmd.Flags().Changed("alias") {
-					targetAlias = strings.TrimSpace(aliasFlag)
-					if targetAlias == "" {
-						return errors.New("--alias cannot be empty")
-					}
-				}
-				if cmd.Flags().Changed("host") {
-					updatedHost.Host = strings.TrimSpace(hostFlag)
-					if updatedHost.Host == "" {
-						return errors.New("--host cannot be empty")
-					}
-				}
-				if cmd.Flags().Changed("port") {
-					if portFlag <= 0 || portFlag > 65535 {
-						return errors.New("--port must be between 1 and 65535")
-					}
-					updatedHost.Port = portFlag
-				}
-				if cmd.Flags().Changed("proxy-jump") {
-					updatedHost.ProxyJump = strings.TrimSpace(proxyJump)
-				}
-				if cmd.Flags().Changed("description") {
-					updatedHost.Description = strings.TrimSpace(descFlag)
-				}
-				if err := applyHostEnvUpdateFlags(cmd, &updatedHost, envFlags, unsetEnv, clearEnv); err != nil {
-					return err
-				}
-				if err := applyHostHookUpdateFlags(cmd, &updatedHost, preConnect, postConnect, clearPre, clearPost); err != nil {
-					return err
-				}
-				applyHostTagUpdateFlags(cmd, &updatedHost, tags, unsetTags, clearTags)
-
-				if err := applyUserProfileUpdateFlags(
+				nextCfg, nextAlias, nextHost, err := applyHostUpdateFlagsWithServices(
 					cmd,
-					&cfg,
-					&updatedHost,
-					userRefFlag,
-					userFlag,
-					authTypeFlag,
-					keyPathFlag,
-					passwordFlag,
-				); err != nil {
+					cfg,
+					alias,
+					existing,
+					hostUpdateFlagValues{
+						aliasFlag:    aliasFlag,
+						hostFlag:     hostFlag,
+						portFlag:     portFlag,
+						proxyJump:    proxyJump,
+						userRefFlag:  userRefFlag,
+						userFlag:     userFlag,
+						authTypeFlag: authTypeFlag,
+						keyPathFlag:  keyPathFlag,
+						passwordFlag: passwordFlag,
+						envFlags:     envFlags,
+						unsetEnv:     unsetEnv,
+						clearEnv:     clearEnv,
+						preConnect:   preConnect,
+						postConnect:  postConnect,
+						clearPre:     clearPre,
+						clearPost:    clearPost,
+						tags:         tags,
+						unsetTags:    unsetTags,
+						clearTags:    clearTags,
+						descFlag:     descFlag,
+					},
+				)
+				if err != nil {
 					return err
 				}
-
-				if _, _, err := resolveHostIdentity(cfg, updatedHost); err != nil {
-					return err
-				}
+				cfg = nextCfg
+				targetAlias = nextAlias
+				updatedHost = nextHost
+				updatedWithService = true
 			} else {
 				if term.IsTerminal(int(os.Stdin.Fd())) {
 					reader := bufio.NewReader(os.Stdin)
@@ -280,15 +278,17 @@ func newUpdateCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			if targetAlias != alias {
+			if !updatedWithService && targetAlias != alias {
 				if _, conflict := cfg.Hosts[targetAlias]; conflict {
 					return fmt.Errorf("host %q already exists", targetAlias)
 				}
 			}
-			if targetAlias != alias {
+			if !updatedWithService && targetAlias != alias {
 				delete(cfg.Hosts, alias)
 			}
-			cfg.Hosts[targetAlias] = updatedHost
+			if !updatedWithService {
+				cfg.Hosts[targetAlias] = updatedHost
+			}
 
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
@@ -371,7 +371,15 @@ func newRmCmd(opts *rootOptions) *cobra.Command {
 				}
 			}
 
-			delete(cfg.Hosts, alias)
+			removed, err := apphosts.Service{}.Remove(apphosts.RemoveInput{
+				Config: cfg,
+				Alias:  alias,
+			})
+			if err != nil {
+				return err
+			}
+			cfg = removed.Config
+			hostCfg = removed.Host
 
 			if err := repo.Save(cfg, pass); err != nil {
 				return err
