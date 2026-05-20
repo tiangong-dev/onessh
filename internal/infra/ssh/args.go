@@ -38,6 +38,7 @@ func BuildSSHFlags(cfg domain.PlainConfig, host domain.HostConfig, auth domain.A
 		return nil, err
 	}
 	args = append(args, extra...)
+	args = appendHostKeyPolicy(args)
 	return args, nil
 }
 
@@ -64,6 +65,7 @@ func BuildSCPArgs(cfg domain.PlainConfig, host domain.HostConfig, userName strin
 	if err != nil {
 		return nil, err
 	}
+	args = appendHostKeyPolicy(args)
 
 	remote := Destination(host, userName) + ":" + remotePath
 	if isUpload {
@@ -114,6 +116,23 @@ func applyKeyAuthArg(args []string, auth domain.AuthConfig) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("unsupported auth type: %s", auth.Type)
 	}
+}
+
+// appendHostKeyPolicy appends OneSSH's default host-key verification policy.
+//
+// accept-new records a host key in known_hosts on first contact and still
+// rejects any later change to a known key. OneSSH needs this because its
+// SSH_ASKPASS password fallback (used when sshpass is absent) runs with
+// SSH_ASKPASS_REQUIRE=force, which routes every prompt — including the
+// interactive "continue connecting (yes/no)?" host-key confirmation —
+// through the askpass helper. The helper can only return the password, so an
+// unknown host would otherwise fail verification and burn the single-use
+// password token.
+//
+// It is appended after caller-supplied options so that an explicit
+// StrictHostKeyChecking wins under ssh's first-value-precedence rule.
+func appendHostKeyPolicy(args []string) []string {
+	return append(args, "-o", "StrictHostKeyChecking=accept-new")
 }
 
 func appendSendEnvOptions(args []string, envMap map[string]string) []string {

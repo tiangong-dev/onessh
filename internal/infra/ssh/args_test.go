@@ -18,7 +18,7 @@ func TestBuildSSHArgsUsesDefaultPort(t *testing.T) {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
 
-	want := []string{"-p", "22", "-T", "ubuntu@192.0.2.10"}
+	want := []string{"-p", "22", "-T", "-o", "StrictHostKeyChecking=accept-new", "ubuntu@192.0.2.10"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -34,7 +34,7 @@ func TestBuildSCPArgsUsesDefaultPort(t *testing.T) {
 		t.Fatalf("BuildSCPArgs: %v", err)
 	}
 
-	want := []string{"-P", "22", "ubuntu@192.0.2.10:/var/log/app.log", "./app.log"}
+	want := []string{"-P", "22", "-o", "StrictHostKeyChecking=accept-new", "ubuntu@192.0.2.10:/var/log/app.log", "./app.log"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected scp args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -51,7 +51,7 @@ func TestBuildSSHArgsIncludesKeyAuthIdentity(t *testing.T) {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
 
-	want := []string{"-p", "2222", "-i", "/keys/deploy", "deploy@example.com"}
+	want := []string{"-p", "2222", "-i", "/keys/deploy", "-o", "StrictHostKeyChecking=accept-new", "deploy@example.com"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -70,7 +70,7 @@ func TestBuildSSHArgsPasswordAuthDoesNotIncludeKeyArg(t *testing.T) {
 	if containsArg(got, "-i") || containsArg(got, "/keys/ignored") {
 		t.Fatalf("password auth should not include identity args: %#v", got)
 	}
-	want := []string{"-p", "22", "deploy@example.com"}
+	want := []string{"-p", "22", "-o", "StrictHostKeyChecking=accept-new", "deploy@example.com"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -87,7 +87,7 @@ func TestBuildSSHArgsRawProxyJump(t *testing.T) {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
 
-	want := []string{"-p", "22", "-J", "jump@bastion.example:2200", "deploy@app.internal"}
+	want := []string{"-p", "22", "-J", "jump@bastion.example:2200", "-o", "StrictHostKeyChecking=accept-new", "deploy@app.internal"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -115,7 +115,7 @@ func TestBuildSSHArgsAliasKeyProxyJump(t *testing.T) {
 		t.Fatalf("BuildSSHArgs: %v", err)
 	}
 
-	want := []string{"-p", "22", "-J", "jump@bastion.internal:2200", "deploy@app.internal"}
+	want := []string{"-p", "22", "-J", "jump@bastion.internal:2200", "-o", "StrictHostKeyChecking=accept-new", "deploy@app.internal"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}
@@ -143,7 +143,7 @@ func TestBuildSSHArgsAliasPasswordProxyJumpUsesOnesshProxyCommand(t *testing.T) 
 	}
 
 	wantProxy := `ProxyCommand='/tmp/one ssh/onessh'"'"'bin' -q 'bastion' -- -W '%h:%p'`
-	want := []string{"-p", "22", "-o", wantProxy, "deploy@app.internal"}
+	want := []string{"-p", "22", "-o", wantProxy, "-o", "StrictHostKeyChecking=accept-new", "deploy@app.internal"}
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("unexpected ssh args:\nwant: %#v\n got: %#v", want, got)
 	}

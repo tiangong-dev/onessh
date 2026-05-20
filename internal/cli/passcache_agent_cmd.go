@@ -150,9 +150,22 @@ func newAskPassCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "askpass",
 		Short:  "Internal askpass helper (do not call directly)",
-		Args:   cobra.NoArgs,
+		Args:   cobra.ArbitraryArgs,
 		Hidden: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// OpenSSH passes the prompt text as the helper's argument. With
+			// SSH_ASKPASS_REQUIRE=force every prompt is routed here, so decline
+			// non-password prompts (e.g. host-key confirmation) before touching
+			// the token — answering them would leak the password and burn the
+			// single-use token meant for the real password prompt.
+			if prompt := strings.TrimSpace(strings.Join(args, " ")); !isPasswordPrompt(prompt) {
+				summary, _, _ := strings.Cut(prompt, "\n")
+				if r := []rune(summary); len(r) > 120 {
+					summary = string(r[:120]) + "…"
+				}
+				return fmt.Errorf("askpass: declined non-password prompt: %q", summary)
+			}
+
 			socketValue := strings.TrimSpace(socket)
 			if socketValue == "" {
 				socketValue = strings.TrimSpace(os.Getenv("ONESSH_ASKPASS_SOCKET"))
