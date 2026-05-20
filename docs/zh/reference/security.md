@@ -139,4 +139,5 @@ OneSSH 在使用主密码的函数返回时立即清零 `[]byte` 缓冲(通过
 - 默认基于父 shell PID 派生的 socket/capability 主要用于命名空间区分，不应视为同 UID 场景下的强安全边界；
 - SSH 密码认证相对密钥认证暴露面更大；
 - `SSH_ASKPASS` 回退路径只是兼容机制，安全性弱于 `sshpass -d`；
+- 主机密钥采用 `StrictHostKeyChecking=accept-new`（首次信任，TOFU）：首次连接时未知主机密钥会被直接记录、不再交互确认，因此**首次连接**无法防御中间人攻击；已记录密钥若发生变更仍会被拒绝。该选项以 ssh 命令行参数传入，会覆盖 `~/.ssh/config` 中的 `StrictHostKeyChecking` 设置；如需强制严格校验，可在命令后追加 `-- -o StrictHostKeyChecking=yes`；
 - Windows 上对端凭证检查需专门实现。

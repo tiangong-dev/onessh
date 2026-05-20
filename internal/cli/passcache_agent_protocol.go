@@ -29,6 +29,10 @@ func resolveAskPassTokenSecret(socketPath, token, capability string) (string, er
 	return infraagent.ResolveAskPassTokenSecret(socketPath, token, capability)
 }
 
+func isPasswordPrompt(prompt string) bool {
+	return infraagent.IsPasswordPrompt(prompt)
+}
+
 func resolveAgentSocketPath(custom string) (string, error) {
 	return infraagent.ResolveSocketPathFromEnv(custom)
 }

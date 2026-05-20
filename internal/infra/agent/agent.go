@@ -197,8 +197,47 @@ func ResolveAskPassTokenSecret(socketPath, token, capability string) (string, er
 }
 
 // AskPassLauncherScript returns the shell wrapper used by OpenSSH's SSH_ASKPASS.
+// OpenSSH passes the prompt text as the helper's first argument; the wrapper
+// forwards it so the helper can refuse non-password prompts (see IsPasswordPrompt).
 func AskPassLauncherScript() string {
-	return "#!/bin/sh\nexec \"$ONESSH_ASKPASS_EXE\" askpass --socket \"$ONESSH_ASKPASS_SOCKET\" --token \"$ONESSH_ASKPASS_TOKEN\"\n"
+	return "#!/bin/sh\nexec \"$ONESSH_ASKPASS_EXE\" askpass --socket \"$ONESSH_ASKPASS_SOCKET\" --token \"$ONESSH_ASKPASS_TOKEN\" -- \"$@\"\n"
+}
+
+// IsPasswordPrompt reports whether an SSH_ASKPASS prompt is requesting a
+// password rather than a host-key confirmation or other interactive prompt.
+//
+// OpenSSH passes the full prompt text as the askpass helper's first argument.
+// With SSH_ASKPASS_REQUIRE=force every prompt is routed through the helper,
+// including the "Are you sure you want to continue connecting (yes/no)?"
+// host-key confirmation. Returning the cached password for such a prompt would
+// both leak it and consume the single-use token, so the helper must answer
+// only genuine password prompts.
+//
+// An empty prompt is treated as a password prompt for backward compatibility:
+// OpenSSH always supplies a non-empty prompt for password requests, so an
+// empty prompt only occurs when the helper is invoked outside that flow.
+func IsPasswordPrompt(prompt string) bool {
+	trimmed := strings.TrimSpace(prompt)
+	if trimmed == "" {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	// Confirmation prompts must never receive the password, even when the
+	// host name embedded in the prompt itself contains the word "password".
+	for _, marker := range []string{
+		"continue connecting",
+		"(yes/no",
+		"authenticity of host",
+		"fingerprint",
+	} {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+	// OpenSSH's standard "password" auth method always emits a prompt
+	// containing "password"; keyboard-interactive prompts with custom server
+	// wording are intentionally declined rather than answered.
+	return strings.Contains(lower, "password")
 }
 
 // BuildAskPassEnv returns the environment consumed by the askpass launcher.

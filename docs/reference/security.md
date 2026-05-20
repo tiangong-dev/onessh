@@ -144,4 +144,11 @@ Still in scope / limitations:
 - default parent-PID-derived socket/capability values are not intended to provide strong isolation from other same-UID processes
 - SSH password auth inherently has higher exposure risk than key auth
 - `SSH_ASKPASS` fallback is a weaker compatibility path than `sshpass -d`
+- host keys use `StrictHostKeyChecking=accept-new` (trust-on-first-use): an
+  unknown host key is recorded on first contact without confirmation, so the
+  very first connection is not protected against a man-in-the-middle; later
+  changes to a recorded key are still rejected. It is passed on the ssh
+  command line and therefore overrides any `StrictHostKeyChecking` set in
+  `~/.ssh/config`; append `-- -o StrictHostKeyChecking=yes` to a command to
+  enforce strict checking instead
 - Windows equivalent of peer-credential checks needs dedicated implementation
